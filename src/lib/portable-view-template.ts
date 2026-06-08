@@ -109,7 +109,7 @@ export function generatePortableViewHtml(
       <span class="text-gray-500 dark:text-gray-400 ml-2">PLANT:</span>
       <span class="text-accentBlue font-bold bg-accentBlue/10 px-2 py-0.5 rounded">${selectedPlant === 'plant1' ? 'SWG01 (Plant 01)' : selectedPlant === 'plant2' ? 'SWG02 (Plant 02)' : 'SWG03 (Plant 03)'}</span>
       <button onclick="document.getElementById('properties-panel').classList.toggle('hidden')" class="ml-3 h-6 px-2 text-[9px] rounded transition-colors flex items-center gap-1 font-bold font-mono shadow-sm bg-slate-700 text-white hover:bg-slate-600">
-        ⚙️ CUSTOMIZE
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> CUSTOMIZE
       </button>
     </div>
   </header>
@@ -130,14 +130,14 @@ export function generatePortableViewHtml(
       <div class="px-3 pt-2 pb-0 border-b border-gray-200 dark:border-borderV bg-gray-50 dark:bg-[#1C283F] shrink-0">
         <div class="flex items-center justify-between mb-2">
           <div class="font-bold text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-            ⚙️ Graph Properties
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg> GRAPH PROPERTIES
           </div>
           <div class="flex items-center gap-1">
             <button onclick="resetAllConfig()" class="text-[8px] font-mono uppercase tracking-wider text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors px-1.5 py-0.5 border border-gray-300 dark:border-borderV rounded hover:bg-gray-100 dark:hover:bg-white/5">
               Reset
             </button>
             <button onclick="document.getElementById('properties-panel').classList.add('hidden')" class="ml-1 p-0.5 text-gray-400 hover:text-gray-800 dark:text-gray-500 dark:hover:text-white rounded transition-colors" title="Close">
-              ✕
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
         </div>

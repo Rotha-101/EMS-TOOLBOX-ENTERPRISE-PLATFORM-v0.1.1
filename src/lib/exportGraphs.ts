@@ -162,7 +162,7 @@ export const exportAllGraphsToZip = async (
     for (let h = 0; h < 24; h++) {
       const hh = String(h).padStart(2, '0');
       hourlyTickvals.push(`${hh}:00:00`);
-      hourlyTicktext.push(`${hh}:00`);
+      hourlyTicktext.push(`${hh}:00:00`);
     }
 
     layout.yaxis = { 
@@ -238,7 +238,11 @@ export const exportAllGraphsToZip = async (
         const imageUrls = [];
         for (let i = 0; i < plotCount; i++) {
           const { traces: subTraces, layout: subLayout } = composite.subplots[i];
-          subLayout.margin = { l: 60, r: 60, t: 40, b: 40 }; // similar to DailyEvaluationGraph
+          subLayout.margin = { l: 80, r: 60, t: 40, b: 80 }; 
+          if (subLayout.xaxis) subLayout.xaxis.automargin = false;
+          if (subLayout.yaxis) subLayout.yaxis.automargin = false;
+          if (subLayout.yaxis2) subLayout.yaxis2.automargin = false;
+
           subLayout.title = { text: '<b>' + subLayout.title.text + '</b>', font: { family: 'Helvetica, Arial, sans-serif', size: 14, color: graphConfig.bgWhite ? '#000000' : '#E0E0E0' } };
           subLayout.legend = { orientation: 'v', x: 0.01, y: 0.99, bgcolor: graphConfig.bgWhite ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)', bordercolor: graphConfig.bgWhite ? '#000' : '#fff', borderwidth: 1, font: {size: 11, color: graphConfig.bgWhite ? '#000' : '#fff'} };
           const gd = await win.Plotly.newPlot(offscreenDiv, subTraces, subLayout, { staticPlot: true, displayModeBar: false });
