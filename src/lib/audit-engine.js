@@ -269,7 +269,7 @@ function extractDataDate(path, fileName) {
 // enough that we evict oldest entries after BUF_CACHE_MAX slots are filled.
 const _bufCache = new Map(); // File -> ArrayBuffer
 const _bufCacheOrder = [];   // insertion-order keys for FIFO eviction
-const BUF_CACHE_MAX = 200;   // keep up to 200 file buffers in memory
+const BUF_CACHE_MAX = 10;   // keep up to 10 file buffers in memory
 async function _getFileBuffer(file) {
   if (_bufCache.has(file)) return _bufCache.get(file);
   const buf = await file.arrayBuffer();
@@ -868,10 +868,19 @@ function hcLog(msg, cls) { if(typeof reactUpdateCb === 'function') reactUpdateCb
   hcLogEl.appendChild(div);
   hcLogEl.scrollTop = hcLogEl.scrollHeight;
 }
-function hcSetProgress(pct, active, customLabel) { if(typeof reactUpdateCb === 'function') reactUpdateCb('progress', pct, active, customLabel);
+let _lastProgressTime = 0;
+function hcSetProgress(pct, active, customLabel) { 
+  const now = Date.now();
+  // Throttle react updates to max 5 frames per second, except for start/end
+  if (!active || pct === 0 || pct >= 100 || now - _lastProgressTime > 200) {
+    _lastProgressTime = now;
+    if(typeof reactUpdateCb === 'function') reactUpdateCb('progress', pct, active, customLabel);
+  }
   const wrap = $('hc-progress');
   wrap.classList.toggle('active', !!active);
-  hcProgressBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  if (hcProgressBar && hcProgressBar.style) {
+    hcProgressBar.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+  }
 }
 
 // 4 top-level categories that match the data structure (POC merges 3 sub-types).
@@ -947,35 +956,15 @@ function initValidationDB() {
 }
 
 async function saveProjectValidationData(projectId) {
-  try {
-    const db = await initValidationDB();
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const data = hcByProject[projectId];
-    store.put(data, projectId);
-    return new Promise((res, rej) => {
-      tx.oncomplete = res;
-      tx.onerror = rej;
-    });
-  } catch (err) {
-    console.error('Failed to save validation data', err);
-  }
+  // DISABLED: Browsers cannot safely persist gigabytes of dynamically extracted File objects 
+  // into IndexedDB without causing Out-Of-Memory / Quota crashes.
+  // We bypass persistence so memory is cleared cleanly when resetting projects.
+  return Promise.resolve();
 }
 
 async function loadProjectValidationData(projectId) {
-  try {
-    const db = await initValidationDB();
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.get(projectId);
-    return new Promise((res, rej) => {
-      req.onsuccess = () => res(req.result);
-      req.onerror = rej;
-    });
-  } catch (err) {
-    console.error('Failed to load validation data', err);
-    return null;
-  }
+  // DISABLED: See saveProjectValidationData. Always return null so state resets cleanly.
+  return null;
 }
 
 async function hcInitProjectsAsync() {
@@ -1041,12 +1030,14 @@ function hcDeletePlant(id) {
   saveProjectValidationData(hcActiveProject);
 }
 
-function hcClearPlantData(id) {
+function hcClearPlantData(id, skipConfirm = false) {
+  _bufCache.clear();
+  _bufCacheOrder.length = 0;
   const arr = hcByProject[hcActiveProject];
   const p = arr.find(x => x.id === id);
   if (!p) return;
   const total = HC_CATS.reduce((s, c) => s + p.files[c.key].length, 0);
-  if (total > 0 && !confirm(`Clear all ${total} files from "${p.name}"?`)) return;
+  if (!skipConfirm && total > 0 && !confirm(`Clear all ${total} files from "${p.name}"?`)) return;
   p.files = { POC: [], ESS: [], SmartLogger: [], ESR: [], ESM: [] };
   hcRenderAllPlants();
   saveProjectValidationData(hcActiveProject);
@@ -1467,6 +1458,8 @@ function hcExportTextLog() {
 
 // Reset the active project's plant cards back to defaults (mappings preserved)
 function hcResetActiveProject() {
+  _bufCache.clear();
+  _bufCacheOrder.length = 0;
   const proj = HC_PROJECTS.find(p => p.id === hcActiveProject);
   const arr = hcByProject[hcActiveProject] || [];
   const total = arr.reduce((s, p) => s + HC_CATS.reduce((ss, c) => ss + p.files[c.key].length, 0), 0);
@@ -2217,6 +2210,8 @@ export {
 export function hcForceStop() {
   hcBusy = false;
   hcSetProgress(0, false);
+  _bufCache.clear();
+  _bufCacheOrder.length = 0;
 }
 
 var reactUpdateCb = null;

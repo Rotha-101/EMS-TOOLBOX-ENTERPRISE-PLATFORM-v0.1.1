@@ -17,6 +17,7 @@ import { useAIContext } from '../lib/ai-context';
 import { parseCycleExcelFile, type ESSRow } from '../lib/cycle-utils';
 import { expandZip, extractDataDate, hcByProject } from '../lib/audit-engine.js';
 import { getMockEvaluationData } from '../lib/mock-data';
+import { useAppStore } from '../store/useAppStore';
 
 const XLSX = (window as any).XLSX;
 type ActiveMetric = 'f_p' | 'soc_p' | 'v_q' | 'fig4' | 'fig5' | 'fig6' | 'pf_p1' | 'pf_p2' | 'pf_p3';
@@ -65,6 +66,7 @@ export function DailyEvaluationGraph({
 
   const setEvalData = (data: any) => {
     setEvalDataState(data);
+    useAppStore.getState().setEvalDataCache(project, data);
     const request = indexedDB.open('ESS_Toolbox', 1);
     request.onupgradeneeded = (e: any) => {
       if (!e.target.result.objectStoreNames.contains('eval_data')) {
@@ -257,6 +259,7 @@ export function DailyEvaluationGraph({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const nccFileInputRef = useRef<HTMLInputElement>(null);
 
   // Ensure selectedPlant is valid for the current project
   useEffect(() => {
@@ -353,6 +356,22 @@ export function DailyEvaluationGraph({
     if (!s || s === 'Average' || s === 'Max' || s === 'Min') return null;
     const d = new Date(s);
     return isNaN(d.getTime()) ? null : d;
+  };
+
+  // Helper: Forward-fill empty telemetry data gaps to ensure clean lines
+  const forwardFillArray = (arr: number[]) => {
+    let last = NaN;
+    for (let i = 0; i < arr.length; i++) {
+      if (isNaN(arr[i])) {
+        if (!isNaN(last)) arr[i] = last;
+      } else {
+        last = arr[i];
+      }
+    }
+    const firstIdx = arr.findIndex(v => !isNaN(v));
+    if (firstIdx > 0) {
+      for (let i = 0; i < firstIdx; i++) arr[i] = arr[firstIdx];
+    }
   };
 
   // Helper: search columns matching key
@@ -544,22 +563,6 @@ export function DailyEvaluationGraph({
         }
       }
 
-      // Forward-fill empty telemetry data gaps to ensure clean lines
-      const forwardFillArray = (arr: number[]) => {
-        let last = NaN;
-        for (let i = 0; i < arr.length; i++) {
-          if (isNaN(arr[i])) {
-            if (!isNaN(last)) arr[i] = last;
-          } else {
-            last = arr[i];
-          }
-        }
-        const firstIdx = arr.findIndex(v => !isNaN(v));
-        if (firstIdx > 0) {
-          for (let i = 0; i < firstIdx; i++) arr[i] = arr[firstIdx];
-        }
-      };
-
       const plants: ('plant1' | 'plant2' | 'plant3')[] = ['plant1', 'plant2', 'plant3'];
       for (const p of plants) {
         forwardFillArray(parsedData.pTotal[p]);
@@ -569,6 +572,9 @@ export function DailyEvaluationGraph({
         forwardFillArray(parsedData.vab[p]);
         forwardFillArray(parsedData.vbc[p]);
         forwardFillArray(parsedData.vca[p]);
+        forwardFillArray(parsedData.remoteP[p]);
+        forwardFillArray(parsedData.cmdP[p]);
+        forwardFillArray(parsedData.cmdQ[p]);
       }
 
 
@@ -673,7 +679,7 @@ export function DailyEvaluationGraph({
         for (let i = 0; i < socArr.length; i++) {
           const val = socArr[i];
           if (!isNaN(val)) {
-            if (val > maxSoc) {
+            if (val >= maxSoc) {
               maxSoc = val;
               maxIdx = i;
             }
@@ -682,7 +688,7 @@ export function DailyEvaluationGraph({
         for (let i = 0; i < socArr.length; i++) {
           const val = socArr[i];
           if (!isNaN(val)) {
-            if (val < minSoc) {
+            if (val <= minSoc) {
               minSoc = val;
               minIdx = i;
             }
@@ -704,17 +710,27 @@ export function DailyEvaluationGraph({
       };
 
       // High/Low SOC time deviations
-      const highSOCDevs = [
-        { name: 'SWG02-SWG01', devSec: Math.abs(p2Soc.maxIdx - p1Soc.maxIdx) * 300 },
-        { name: 'SWG03-SWG01', devSec: Math.abs(p3Soc.maxIdx - p1Soc.maxIdx) * 300 },
-        { name: 'SWG03-SWG02', devSec: Math.abs(p3Soc.maxIdx - p2Soc.maxIdx) * 300 },
-      ].sort((a, b) => b.devSec - a.devSec);
+      let highSOCDevs = [
+        { name: 'SWG02-SWG01', devSec: Math.abs(p2Soc.maxIdx - p1Soc.maxIdx) * 300 }
+      ];
+      if (project !== 'SNTL400') {
+        highSOCDevs.push(
+          { name: 'SWG03-SWG01', devSec: Math.abs(p3Soc.maxIdx - p1Soc.maxIdx) * 300 },
+          { name: 'SWG03-SWG02', devSec: Math.abs(p3Soc.maxIdx - p2Soc.maxIdx) * 300 }
+        );
+      }
+      highSOCDevs.sort((a, b) => b.devSec - a.devSec);
 
-      const lowSOCDevs = [
-        { name: 'SWG02-SWG01', devSec: Math.abs(p2Soc.minIdx - p1Soc.minIdx) * 300 },
-        { name: 'SWG03-SWG01', devSec: Math.abs(p3Soc.minIdx - p1Soc.minIdx) * 300 },
-        { name: 'SWG03-SWG02', devSec: Math.abs(p3Soc.minIdx - p2Soc.minIdx) * 300 },
-      ].sort((a, b) => b.devSec - a.devSec);
+      let lowSOCDevs = [
+        { name: 'SWG02-SWG01', devSec: Math.abs(p2Soc.minIdx - p1Soc.minIdx) * 300 }
+      ];
+      if (project !== 'SNTL400') {
+        lowSOCDevs.push(
+          { name: 'SWG03-SWG01', devSec: Math.abs(p3Soc.minIdx - p1Soc.minIdx) * 300 },
+          { name: 'SWG03-SWG02', devSec: Math.abs(p3Soc.minIdx - p2Soc.minIdx) * 300 }
+        );
+      }
+      lowSOCDevs.sort((a, b) => b.devSec - a.devSec);
 
       const formatDev = (sec: number) => {
         const m = Math.floor(sec / 60);
@@ -808,6 +824,112 @@ export function DailyEvaluationGraph({
     }));
 
     await parseEvaluationExcelFiles(collected);
+  };
+
+  const handleNCCFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    if (!evalData) {
+      alert("Please load the main data folder first before adding NCC data.");
+      e.target.value = '';
+      return;
+    }
+    const file = e.target.files[0];
+    e.target.value = '';
+
+    setIsCalculating(true);
+    setCalcStatus('Parsing NCC file...');
+    setErrorMessage('');
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array', cellDates: false, raw: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      if (!sheet || !sheet['!ref']) throw new Error("Empty spreadsheet");
+
+      const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: null }) as any[];
+      if (aoa.length < 2) throw new Error("Not enough rows");
+
+      let headerRowIdx = -1;
+      let headerRow: string[] = [];
+      for (let ri = 0; ri < Math.min(8, aoa.length); ri++) {
+        const row = aoa[ri];
+        if (!row) continue;
+        const rowStrs = row.map((c: any) => c == null ? '' : String(c).trim());
+        if (rowStrs.some((s: string) => /^(time|datetime)$/i.test(s))) {
+          headerRowIdx = ri;
+          headerRow = rowStrs;
+          break;
+        }
+      }
+      if (headerRowIdx === -1) throw new Error("Could not find header row (Time/Datetime)");
+
+      const timeIdx = headerRow.findIndex((h: string) => /^(time|datetime)$/i.test(h));
+      const nccP1Idx   = headerRow.findIndex((h: string) => /swg01.+p\(/i.test(h));
+      const nccQ1Idx   = headerRow.findIndex((h: string) => /swg01.+q\(/i.test(h));
+      const nccSOC1Idx = headerRow.findIndex((h: string) => /swg01.+soc/i.test(h));
+      const nccP2Idx   = headerRow.findIndex((h: string) => /swg02.+p\(/i.test(h));
+      const nccQ2Idx   = headerRow.findIndex((h: string) => /swg02.+q\(/i.test(h));
+      const nccSOC2Idx = headerRow.findIndex((h: string) => /swg02.+soc/i.test(h));
+      const nccP3Idx   = headerRow.findIndex((h: string) => /swg03.+p\(/i.test(h));
+      const nccQ3Idx   = headerRow.findIndex((h: string) => /swg03.+q\(/i.test(h));
+      const nccSOC3Idx = headerRow.findIndex((h: string) => /swg03.+soc/i.test(h));
+
+      const safeNum = (v: any) => {
+        if (v == null || v === '--' || v === 'N/A' || v === '') return NaN;
+        const n = parseFloat(String(v));
+        return isNaN(n) ? NaN : n;
+      };
+
+      const newData = { ...evalData };
+
+      for (const row of aoa.slice(headerRowIdx + 1)) {
+        if (!row || row.length === 0) continue;
+        const rawTime = row[timeIdx];
+        if (rawTime == null) continue;
+        const tStr = String(rawTime).trim();
+        if (['average', 'max', 'min', 'total'].some(k => tStr.toLowerCase().startsWith(k))) continue;
+        const t = parseFlexDate(rawTime);
+        if (!t) continue;
+
+        const sec = t.getHours() * 3600 + t.getMinutes() * 60 + t.getSeconds();
+        const ti = Math.min(86400 - 1, Math.max(0, sec));
+
+        const p1 = safeNum(row[nccP1Idx]);
+        const q1 = safeNum(row[nccQ1Idx]);
+        const s1 = safeNum(row[nccSOC1Idx]);
+        const p2 = safeNum(row[nccP2Idx]);
+        const q2 = safeNum(row[nccQ2Idx]);
+        const s2 = safeNum(row[nccSOC2Idx]);
+        const p3 = safeNum(row[nccP3Idx]);
+        const q3 = safeNum(row[nccQ3Idx]);
+        const s3 = safeNum(row[nccSOC3Idx]);
+
+        if (!isNaN(p1)) newData.cmdP.plant1[ti] = p1;
+        if (!isNaN(q1)) newData.cmdQ.plant1[ti] = q1;
+        if (!isNaN(s1)) newData.soc.plant1[ti]  = s1;
+        if (!isNaN(p2)) newData.cmdP.plant2[ti] = p2;
+        if (!isNaN(q2)) newData.cmdQ.plant2[ti] = q2;
+        if (!isNaN(s2)) newData.soc.plant2[ti]  = s2;
+        if (!isNaN(p3)) newData.cmdP.plant3[ti] = p3;
+        if (!isNaN(q3)) newData.cmdQ.plant3[ti] = q3;
+        if (!isNaN(s3)) newData.soc.plant3[ti]  = s3;
+      }
+
+      const plants: ('plant1' | 'plant2' | 'plant3')[] = ['plant1', 'plant2', 'plant3'];
+      for (const p of plants) {
+        forwardFillArray(newData.cmdP[p]);
+        forwardFillArray(newData.cmdQ[p]);
+        forwardFillArray(newData.soc[p]);
+      }
+      
+      setEvalData(newData);
+      setCalcStatus('NCC Data merged successfully!');
+    } catch (err: any) {
+      setErrorMessage(err.message || String(err));
+      setCalcStatus('Failed to parse NCC data.');
+    } finally {
+      setIsCalculating(false);
+    }
   };
 
   // Export processed data as a real Excel file matching MATLAB logs
@@ -972,6 +1094,7 @@ export function DailyEvaluationGraph({
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Plotly.js -->
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
   <style>
     body {
@@ -1014,6 +1137,9 @@ export function DailyEvaluationGraph({
       <div id="pin-counter-container" class="flex items-center gap-1.5 ml-2 font-mono"></div>
     </div>
     <div class="flex items-center gap-3 text-[10px] font-mono text-gray-600 dark:text-gray-400">
+      <button id="btn-copy-clipboard" onclick="copyGraphsToClipboard()" class="h-6 px-2 rounded transition-colors flex items-center gap-1 font-bold shadow-sm bg-accentBlue text-white hover:bg-blue-600 mr-2">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg> COPY GRAPHS
+      </button>
       <!-- Theme Switcher Button -->
       <button id="theme-toggle" onclick="toggleTheme()" class="p-1.5 rounded-lg border border-gray-300 dark:border-borderV hover:bg-gray-100 dark:hover:bg-white/5 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-white flex items-center justify-center cursor-pointer mr-2" title="Toggle theme">
         <!-- Sun Icon (visible in dark mode) -->
@@ -1211,11 +1337,11 @@ export function DailyEvaluationGraph({
             <div class="flex items-center gap-2">
               <span class="text-gray-500 dark:text-gray-400 shrink-0 text-[9px] w-16">Line Style</span>
               <select id="select-style-${idx}" onchange="updateTraceStyle(${idx}, this.value)" class="flex-1 h-6 bg-gray-100 dark:bg-[#0F172A] border border-gray-300 dark:border-gray-700 rounded px-1 text-[9px] text-gray-900 dark:text-white focus:outline-none focus:border-accentBlue">
-                <option value="solid">â€” Solid</option>
-                <option value="dash">- - Dashed</option>
-                <option value="dot">Â·Â·Â· Dotted</option>
-                <option value="dashdot">-Â·- Dash-Dot</option>
-                <option value="longdash">â€” Long Dash</option>
+                <option value="solid">Solid</option>
+                <option value="dash">Dashed</option>
+                <option value="dot">Dotted</option>
+                <option value="dashdot">Dash-Dot</option>
+                <option value="longdash">Long Dash</option>
               </select>
             </div>
           </div>
@@ -1564,11 +1690,13 @@ export function DailyEvaluationGraph({
         const dash = graphConfig.lineDash[idx] ?? 'solid';
         const visible = graphConfig.traceVisible[idx] !== false;
         const modeBase = graphConfig.showMarkers ? 'lines+markers' : 'lines';
+        const isNoData = trace.name && trace.name.includes('(No Data)');
         return {
           ...trace,
           x: filteredTimeX,
           y: filterArr(trace.y),
           visible: visible ? true : 'legendonly',
+          showlegend: isNoData ? false : (trace.showlegend !== undefined ? trace.showlegend : true),
           mode: modeBase,
           line: {
             ...trace.line,
@@ -1785,7 +1913,7 @@ export function DailyEvaluationGraph({
           const traces = [
             applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 2 } }, 0),
             applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: 'P command from NCC', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: 'Remote Active Power', line: { color: '#731A66', width: 1.6 } }, 2),
+            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: 'Remote Active Power', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
             applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 2 } }, 3)
           ];
           const layout = getMATLABLayout(drawPanelTitle(pk) + ' | SOC & Active Power', 'P (MW)', 'SOC (%)', undefined, undefined, 'soc_p_' + pk);
@@ -1835,7 +1963,7 @@ export function DailyEvaluationGraph({
         createPlotWithEvents(div2, [
           applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 1.2 } }, 0),
           applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.cmdP[pk].some((v) => v != null && !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-          applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+          applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
           applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 1.2 } }, 3)
         ], getMATLABLayout('SOC & Active Power', 'P (MW)', 'SOC (%)', undefined, undefined, activeMetric + '_soc_' + pk), activeMetric + '_soc_' + pk);
 
@@ -1875,7 +2003,7 @@ export function DailyEvaluationGraph({
           createPlotWithEvents(div2, [
             applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 1.2 } }, 0),
             applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.cmdP[pk].some((v) => v != null && !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
             applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 1.2 } }, 3)
           ], getMATLABLayout('SOC & Active Power', 'P (MW)', 'SOC (%)', undefined, undefined, 'fig4_soc_' + pk), 'fig4_soc_' + pk);
 
@@ -1927,12 +2055,12 @@ export function DailyEvaluationGraph({
           const traces = [
             applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 1.2 } }, 0),
             applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.cmdP[pk].some((v) => v != null && !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
             applyTrace({ y: evalDataRaw.dispatchP[pk], type: 'scatter', mode: 'lines', name: 'P dispatch allocation', line: { color: '#339933', width: 1.8, dash: 'dash' } }, 3),
             applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 1.2 } }, 4)
           ];
 
-          if (socStats.maxIdx !== 0) {
+          if (false /* disabled socStats.maxIdx !== 0 */) {
             traces.push({
               x: [timeX[socStats.maxIdx]],
               y: [socStats.maxSoc],
@@ -1944,7 +2072,7 @@ export function DailyEvaluationGraph({
               showlegend: false
             });
           }
-          if (socStats.minIdx !== 0) {
+          if (false /* disabled socStats.minIdx !== 0 */) {
             traces.push({
               x: [timeX[socStats.minIdx]],
               y: [socStats.minSoc],
@@ -1964,7 +2092,7 @@ export function DailyEvaluationGraph({
               String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
           };
 
-          if (socStats.maxIdx !== 0) {
+          if (false /* disabled socStats.maxIdx !== 0 */) {
             annotations.push({
               x: timeX[socStats.maxIdx],
               y: socStats.maxSoc,
@@ -1975,7 +2103,7 @@ export function DailyEvaluationGraph({
               font: { family: 'Arial, sans-serif', size: 7.5, color: '#000000' }
             });
           }
-          if (socStats.minIdx !== 0) {
+          if (false /* disabled socStats.minIdx !== 0 */) {
             annotations.push({
               x: timeX[socStats.minIdx],
               y: socStats.minSoc,
@@ -2175,6 +2303,7 @@ export function DailyEvaluationGraph({
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Plotly.js -->
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
   <style>
     body {
@@ -2217,6 +2346,9 @@ export function DailyEvaluationGraph({
       <div id="pin-counter-container" class="flex items-center gap-1.5 ml-2 font-mono"></div>
     </div>
     <div class="flex items-center gap-3 text-[10px] font-mono text-gray-600 dark:text-gray-400">
+      <button id="btn-copy-clipboard" onclick="copyGraphsToClipboard()" class="h-6 px-2 rounded transition-colors flex items-center gap-1 font-bold shadow-sm bg-accentBlue text-white hover:bg-blue-600 mr-2">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg> COPY GRAPHS
+      </button>
       <span class="text-gray-500 dark:text-gray-400">ACTIVE GRAPH:</span>
       <select id="select-active-metric" onchange="changeMetric(this.value)" class="h-6 bg-gray-100 dark:bg-[#0F172A] border border-gray-300 dark:border-gray-700 rounded px-1.5 text-[10px] text-gray-900 dark:text-white focus:outline-none focus:border-accentBlue font-bold font-mono">
         ${project === 'SNTL400' ? `
@@ -2436,11 +2568,11 @@ export function DailyEvaluationGraph({
             <div class="flex items-center gap-2">
               <span class="text-gray-500 dark:text-gray-400 shrink-0 text-[9px] w-16">Line Style</span>
               <select id="select-style-${idx}" onchange="updateTraceStyle(${idx}, this.value)" class="flex-1 h-6 bg-gray-100 dark:bg-[#0F172A] border border-gray-300 dark:border-gray-700 rounded px-1 text-[9px] text-gray-900 dark:text-white focus:outline-none focus:border-accentBlue">
-                <option value="solid">â€” Solid</option>
-                <option value="dash">- - Dashed</option>
-                <option value="dot">Â·Â·Â· Dotted</option>
-                <option value="dashdot">-Â·- Dash-Dot</option>
-                <option value="longdash">â€” Long Dash</option>
+                <option value="solid">Solid</option>
+                <option value="dash">Dashed</option>
+                <option value="dot">Dotted</option>
+                <option value="dashdot">Dash-Dot</option>
+                <option value="longdash">Long Dash</option>
               </select>
             </div>
           </div>
@@ -2648,6 +2780,37 @@ export function DailyEvaluationGraph({
       renderAll();
     }
 
+    async function copyGraphsToClipboard() {
+      const btn = document.getElementById('btn-copy-clipboard');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'COPYING...';
+      btn.disabled = true;
+      try {
+        const container = document.getElementById('chart-area-container');
+        const canvas = await html2canvas(container, {
+          backgroundColor: document.documentElement.classList.contains('dark') ? '#0B0F19' : '#F8FAFC',
+          scale: 2
+        });
+        canvas.toBlob(async (blob) => {
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob })
+            ]);
+            btn.innerHTML = 'COPIED!';
+            setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+          } catch (err) {
+            console.error('Clipboard write error:', err);
+            btn.innerHTML = 'ERROR';
+            setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+          }
+        }, 'image/png');
+      } catch (err) {
+        console.error('html2canvas error:', err);
+        btn.innerHTML = 'ERROR';
+        setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+      }
+    }
+
     function resetAllConfig() {
       graphConfig = {
         showGrid: true,
@@ -2790,11 +2953,13 @@ export function DailyEvaluationGraph({
         const dash = graphConfig.lineDash[idx] ?? 'solid';
         const visible = graphConfig.traceVisible[idx] !== false;
         const modeBase = graphConfig.showMarkers ? 'lines+markers' : 'lines';
+        const isNoData = trace.name && trace.name.includes('(No Data)');
         return {
           ...trace,
           x: filteredTimeX,
           y: filterArr(trace.y),
           visible: visible ? true : 'legendonly',
+          showlegend: isNoData ? false : (trace.showlegend !== undefined ? trace.showlegend : true),
           mode: modeBase,
           line: {
             ...trace.line,
@@ -3011,7 +3176,7 @@ export function DailyEvaluationGraph({
           const traces = [
             applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 2 } }, 0),
             applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.cmdP[pk].some((v) => v != null && !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
             applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 2 } }, 3)
           ];
           const layout = getMATLABLayout(drawPanelTitle(pk) + ' | SOC & Active Power', 'P (MW)', 'SOC (%)', undefined, undefined, 'soc_p_' + pk);
@@ -3061,7 +3226,7 @@ export function DailyEvaluationGraph({
         createPlotWithEvents(div2, [
           applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 1.2 } }, 0),
           applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.cmdP[pk].some((v) => v != null && !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-          applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+          applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
           applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 1.2 } }, 3)
         ], getMATLABLayout('SOC & Active Power', 'P (MW)', 'SOC (%)', undefined, undefined, activeMetric + '_soc_' + pk), activeMetric + '_soc_' + pk);
 
@@ -3101,7 +3266,7 @@ export function DailyEvaluationGraph({
           createPlotWithEvents(div2, [
             applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 1.2 } }, 0),
             applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.cmdP[pk].some((v) => v != null && !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
             applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 1.2 } }, 3)
           ], getMATLABLayout('SOC & Active Power', 'P (MW)', 'SOC (%)', undefined, undefined, 'fig4_soc_' + pk), 'fig4_soc_' + pk);
 
@@ -3153,12 +3318,12 @@ export function DailyEvaluationGraph({
           const traces = [
             applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 1.2 } }, 0),
             applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.cmdP[pk].some((v) => v != null && !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+            applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
             applyTrace({ y: evalDataRaw.dispatchP[pk], type: 'scatter', mode: 'lines', name: 'P dispatch allocation', line: { color: '#339933', width: 1.8, dash: 'dash' } }, 3),
             applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 1.2 } }, 4)
           ];
 
-          if (socStats.maxIdx !== 0) {
+          if (false /* disabled socStats.maxIdx !== 0 */) {
             traces.push({
               x: [timeX[socStats.maxIdx]],
               y: [socStats.maxSoc],
@@ -3170,7 +3335,7 @@ export function DailyEvaluationGraph({
               showlegend: false
             });
           }
-          if (socStats.minIdx !== 0) {
+          if (false /* disabled socStats.minIdx !== 0 */) {
             traces.push({
               x: [timeX[socStats.minIdx]],
               y: [socStats.minSoc],
@@ -3190,7 +3355,7 @@ export function DailyEvaluationGraph({
               String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
           };
 
-          if (socStats.maxIdx !== 0) {
+          if (false /* disabled socStats.maxIdx !== 0 */) {
             annotations.push({
               x: timeX[socStats.maxIdx],
               y: socStats.maxSoc,
@@ -3201,7 +3366,7 @@ export function DailyEvaluationGraph({
               font: { family: 'Arial, sans-serif', size: 7.5, color: '#000000' }
             });
           }
-          if (socStats.minIdx !== 0) {
+          if (false /* disabled socStats.minIdx !== 0 */) {
             annotations.push({
               x: timeX[socStats.minIdx],
               y: socStats.minSoc,
@@ -3429,11 +3594,13 @@ export function DailyEvaluationGraph({
       const dash = graphConfig.lineDash[idx] ?? 'solid';
       const visible = graphConfig.traceVisible[idx] !== false;
       const modeBase = graphConfig.showMarkers ? 'lines+markers' : 'lines';
+      const isNoData = trace.name && trace.name.includes('(No Data)');
       return {
         ...trace,
         x: filteredTimeX,
         y: filterArr(trace.y),
         visible: visible ? true : 'legendonly',
+        showlegend: isNoData ? false : (trace.showlegend !== undefined ? trace.showlegend : true),
         mode: modeBase as any,
         line: {
           ...trace.line,
@@ -3605,7 +3772,7 @@ export function DailyEvaluationGraph({
             data={[
               applyTrace({ x: filteredTimeX, y: evalData.pTotal[pk],  type: 'scatter', mode: 'lines', name: 'P total',             line: { color: '#0072BD', width: 2 } }, 0),
               applyTrace({ x: filteredTimeX, y: evalData.cmdP[pk],    type: 'scatter', mode: 'lines', name: 'P command from NCC',   line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-              applyTrace({ x: filteredTimeX, y: evalData.remoteP[pk], type: 'scatter', mode: 'lines', name: 'Remote Active Power',  line: { color: '#731A66', width: 1.6 } }, 2),
+              applyTrace({ x: filteredTimeX, y: evalData.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: 'Remote Active Power',  line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
               applyTrace({ x: filteredTimeX, y: evalData.soc[pk],     type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2',     line: { color: '#D95319', width: 2 } }, 3),
             ]}
             layout={getMATLABLayout(title, 'P (MW)', 'SOC (%)', undefined, undefined, `soc_p_${pk}`)}
@@ -3674,7 +3841,7 @@ export function DailyEvaluationGraph({
               data={[
                 applyTrace({ x: filteredTimeX, y: evalData.pTotal[pk],  type: 'scatter', mode: 'lines', name: 'P total',            line: { color: '#0072BD', width: 1.2 } }, 0),
                 applyTrace({ x: filteredTimeX, y: evalData.cmdP[pk],    type: 'scatter', mode: 'lines', name: evalData.cmdP[pk].some((v: number) => !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-                applyTrace({ x: filteredTimeX, y: evalData.remoteP[pk], type: 'scatter', mode: 'lines', name: evalData.remoteP[pk].some((v: number) => !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+                applyTrace({ x: filteredTimeX, y: evalData.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalData.remoteP[pk].some((v: any) => !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
                 applyTrace({ x: filteredTimeX, y: evalData.soc[pk],     type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2',   line: { color: '#D95319', width: 1.2 } }, 3),
               ]}
               layout={getMATLABLayout('SOC & Active Power', 'P (MW)', 'SOC (%)', undefined, undefined, `pf_${pk}_soc`)}
@@ -3730,7 +3897,7 @@ export function DailyEvaluationGraph({
               data={[
                 applyTrace({ x: filteredTimeX, y: evalData.pTotal[pk],  type: 'scatter', mode: 'lines', name: 'P total',            line: { color: '#0072BD', width: 1.2 } }, 0),
                 applyTrace({ x: filteredTimeX, y: evalData.cmdP[pk],    type: 'scatter', mode: 'lines', name: evalData.cmdP[pk].some((v) => !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-                applyTrace({ x: filteredTimeX, y: evalData.remoteP[pk], type: 'scatter', mode: 'lines', name: evalData.remoteP[pk].some((v) => !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
+                applyTrace({ x: filteredTimeX, y: evalData.remoteP[pk], type: 'scatter', mode: 'lines', connectgaps: true, name: evalData.remoteP[pk].some((v: any) => !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
                 applyTrace({ x: filteredTimeX, y: evalData.soc[pk],     type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2',   line: { color: '#D95319', width: 1.2 } }, 3),
               ]}
               layout={getMATLABLayout('SOC & Active Power', 'P (MW)', 'SOC (%)', undefined, undefined, `fig4_soc_${pk}`)}
@@ -3817,7 +3984,7 @@ export function DailyEvaluationGraph({
         ];
 
         // Highlight hit points
-        if (socStats.maxIdx !== 0) {
+        if (false /* disabled socStats.maxIdx !== 0 */) {
           plotData.push({
             x: [timeX[socStats.maxIdx]],
             y: [socStats.maxSoc],
@@ -3829,7 +3996,7 @@ export function DailyEvaluationGraph({
             showlegend: false
           });
         }
-        if (socStats.minIdx !== 0) {
+        if (false /* disabled socStats.minIdx !== 0 */) {
           plotData.push({
             x: [timeX[socStats.minIdx]],
             y: [socStats.minSoc],
@@ -3844,7 +4011,7 @@ export function DailyEvaluationGraph({
 
         // Pointer annotations
         const annotations: any[] = [];
-        if (socStats.maxIdx !== 0) {
+        if (false /* disabled socStats.maxIdx !== 0 */) {
           const maxDate = evalData.timestamps[socStats.maxIdx];
           annotations.push({
             x: timeX[socStats.maxIdx],
@@ -3867,7 +4034,7 @@ export function DailyEvaluationGraph({
             font: { family: 'Arial, sans-serif', size: 7.5, color: '#000000' }
           });
         }
-        if (socStats.minIdx !== 0) {
+        if (false /* disabled socStats.minIdx !== 0 */) {
           const minDate = evalData.timestamps[socStats.minIdx];
           annotations.push({
             x: timeX[socStats.minIdx],
@@ -4146,6 +4313,21 @@ export function DailyEvaluationGraph({
             >
               <Upload size={12} />
               Upload Files
+            </Button>
+            <input
+              type="file"
+              ref={nccFileInputRef}
+              className="hidden"
+              accept=".xlsx,.xls"
+              onChange={handleNCCFileUpload}
+            />
+            <Button
+              onClick={() => nccFileInputRef.current?.click()}
+              disabled={isCalculating || !evalData}
+              className="bg-green-700 hover:bg-green-600 text-white h-7 text-[9px] font-bold flex items-center gap-1.5 border-0 shadow-sm"
+            >
+              <Upload size={12} />
+              NCC Data
             </Button>
             <Button
               onClick={handleDownloadExcelLogs}
@@ -4681,11 +4863,11 @@ export function DailyEvaluationGraph({
                               }}
                               className="flex-1 h-6 bg-surface/50 border border-border-v rounded px-1 text-[9px] focus:outline-none focus:border-accent-blue/50"
                             >
-                              <option value="solid">â€” Solid</option>
-                              <option value="dash">- - Dashed</option>
-                              <option value="dot">Â·Â·Â· Dotted</option>
-                              <option value="dashdot">-Â·- Dash-Dot</option>
-                              <option value="longdash">â€” Long Dash</option>
+                              <option value="solid">Solid</option>
+                              <option value="dash">Dashed</option>
+                              <option value="dot">Dotted</option>
+                              <option value="dashdot">Dash-Dot</option>
+                              <option value="longdash">Long Dash</option>
                             </select>
                           </div>
                         </div>

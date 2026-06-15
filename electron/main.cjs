@@ -7,11 +7,18 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#0f172a',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true
     }
+  });
+
+  win.once('ready-to-show', () => {
+    win.show();
   });
 
   const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
@@ -29,6 +36,8 @@ function createWindow() {
     win.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 }
+
+app.commandLine.appendSwitch('js-flags', '--max-old-space-size=8192');
 
 app.whenReady().then(() => {
   createWindow();

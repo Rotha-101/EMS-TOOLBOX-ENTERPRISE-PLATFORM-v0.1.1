@@ -97,6 +97,12 @@ interface AppState {
 
   aiEnableWebSearch: boolean;
   setAiEnableWebSearch: (val: boolean) => void;
+
+  hcActiveProject: string | null;
+  setHcActiveProject: (proj: string | null) => void;
+  // Global RAM Cache for instant dataset access (bypasses IndexedDB)
+  evalDataCache: Record<string, any>;
+  setEvalDataCache: (projectId: string, data: any) => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -147,6 +153,11 @@ export const useAppStore = create<AppState>()(
       evalDataPreview: null,
       setEvalDataPreview: (data) => set({ evalDataPreview: data }),
 
+      evalDataCache: {},
+      setEvalDataCache: (projectId, data) => set((state) => ({ 
+        evalDataCache: { ...state.evalDataCache, [projectId]: data } 
+      })),
+
       // Global Settings defaults & setters
       compactTableRows: true,
       setCompactTableRows: (val) => set({ compactTableRows: val }),
@@ -195,11 +206,24 @@ export const useAppStore = create<AppState>()(
 
       aiEnableWebSearch: false,
       setAiEnableWebSearch: (val) => set({ aiEnableWebSearch: val }),
+
+      hcActiveProject: null,
+      setHcActiveProject: (proj) => set({ hcActiveProject: proj }),
     }),
     {
       name: 'ess-toolbox-storage', // name of the item in the storage (must be unique)
+      version: 1, // bump version to discard old, incompatible state
       storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
       partialize: (state) => ({ 
+        activeTab: state.activeTab,
+        hcActiveProject: state.hcActiveProject,
+        exportSource: state.exportSource,
+        exportFormat: state.exportFormat,
+        exportDateRange: state.exportDateRange,
+        exportAggregation: state.exportAggregation,
+        exportFilename: state.exportFilename,
+        exportColumns: state.exportColumns,
+        exportPreviewMode: state.exportPreviewMode,
         theme: state.theme,
         compactTableRows: state.compactTableRows,
         autoRefreshDashboard: state.autoRefreshDashboard,

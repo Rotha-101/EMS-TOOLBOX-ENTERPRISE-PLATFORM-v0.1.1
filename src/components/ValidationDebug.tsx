@@ -98,40 +98,6 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
 
   return (
     <section className="flex-1 bg-panel border border-border-v rounded-sm flex flex-col relative overflow-hidden">
-      {progress.active && (
-        <div className="absolute inset-0 bg-background/80 backdrop-blur-md flex flex-col items-center justify-center z-50 transition-all duration-300">
-          <div className="bg-[#131B2E]/95 border border-slate-800/80 rounded-xl p-8 w-[min(96vw,52rem)] max-w-none shadow-[0_20px_50px_rgba(0,0,0,0.8)] backdrop-blur-sm flex flex-col items-center gap-6 transition-all duration-300">
-            <div className="relative w-16 h-16">
-              <div className="absolute inset-0 rounded-full border-4 border-accent-blue/10"></div>
-              <div className="absolute inset-0 rounded-full border-4 border-t-accent-blue animate-spin"></div>
-            </div>
-            
-            <div className="text-center space-y-2 w-full px-4">
-              <h3 className="font-bold text-slate-200 text-xs tracking-wider uppercase font-mono leading-relaxed break-all">{progress.label}</h3>
-              <p className="text-[10px] text-slate-500 font-mono">Do not refresh or close this tab.</p>
-            </div>
-
-            <div className="w-full space-y-4 px-4">
-              <div className="w-full bg-slate-950/40 h-3 rounded-full overflow-hidden border border-slate-800/60 p-0.5">
-                <div 
-                  className="bg-accent-blue h-full rounded-full transition-all duration-300 ease-out shadow-[0_0_10px_rgba(59,130,246,0.5)]"
-                  style={{ width: `${progress.pct}%` }}
-                ></div>
-              </div>
-              <div className="flex flex-nowrap justify-between items-center text-[9px] sm:text-[10px] font-mono border-t border-slate-800/50 pt-4 gap-1.5">
-                <span className="bg-slate-800/60 border border-slate-700/30 px-1.5 sm:px-2 py-1 rounded text-slate-300 shrink-0 whitespace-nowrap">{progress.pct.toFixed(0)}% COMPLETE</span>
-                <span className="text-accent-blue bg-accent-blue/10 border border-accent-blue/20 px-1.5 sm:px-2 py-1 rounded font-bold animate-pulse shrink-0 whitespace-nowrap">
-                  ELAPSED: {formatHHMMSS(elapsedTime)}
-                </span>
-                <span className="text-violet-400 bg-violet-500/10 border border-violet-500/20 px-1.5 sm:px-2 py-1 rounded font-bold animate-pulse shrink-0 whitespace-nowrap">
-                  REMAINING: {getRemainingTime()}
-                </span>
-                <span className="bg-green-500/10 text-green-400 border border-green-500/20 px-1.5 sm:px-2 py-1 rounded font-bold shrink-0 whitespace-nowrap">STATUS: ACTIVE</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="px-3 py-2 border-b border-border-v flex items-center justify-between bg-surface/50 shrink-0">
         <div className="font-bold text-[11px] uppercase tracking-wider flex items-center gap-2">
@@ -180,7 +146,7 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
             className="bg-red-600 text-white hover:bg-red-500 h-7 text-[10px] font-bold shadow-none px-5 transition-all border-none uppercase" 
             onClick={() => {
               if (confirm('Are you sure you want to clear data for all plants?')) {
-                currentPlants.forEach((plant: any) => hcClearPlantData(plant.id));
+                currentPlants.forEach((plant: any) => hcClearPlantData(plant.id, true));
               }
             }}
           >
@@ -399,7 +365,7 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                       <span className="bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded text-[8px] font-bold">{allUploadedFiles.length}</span>
                     </div>
                     <div className="max-h-36 overflow-y-auto scrollbar-clean space-y-1 pr-1">
-                      {allUploadedFiles.map((f, i) => (
+                      {allUploadedFiles.slice(0, 100).map((f, i) => (
                         <div key={i} className="flex flex-col text-[9px] font-mono bg-foreground/[0.02] border border-border-v/30 rounded p-1.5">
                           <div className="flex items-center justify-between text-foreground/80 font-bold gap-2">
                             <span className="truncate flex-1 text-left" title={f.filePath}>{f.fileName}</span>
@@ -413,6 +379,11 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                           </div>
                         </div>
                       ))}
+                      {allUploadedFiles.length > 100 && (
+                        <div className="text-center text-foreground/40 text-[9px] py-1 border border-dashed border-border-v/30 rounded bg-foreground/[0.01]">
+                          ... and {allUploadedFiles.length - 100} more
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -524,7 +495,7 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                               <div className="text-center text-foreground/30 py-2">no files yet</div>
                             ) : (
                               <div className="space-y-1">
-                                {list.map((fileEntry: any, i: number) => {
+                                {list.slice(0, 100).map((fileEntry: any, i: number) => {
                                   const status = fileEntry.report?.status;
                                   const isCritical = status === 'critical';
                                   const isWarning = status === 'warning';
@@ -549,6 +520,11 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                                     </div>
                                   );
                                 })}
+                                {list.length > 100 && (
+                                  <div className="text-center text-foreground/40 text-[9px] py-1 border border-dashed border-border-v/30 rounded bg-foreground/[0.01]">
+                                    ... and {list.length - 100} more
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>

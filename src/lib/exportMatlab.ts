@@ -94,7 +94,7 @@ yyaxis left;
 ax2.YColor = '#0072BD';
 hold on;
 plot(t, pTotal, 'Color', '#0072BD', 'LineWidth', ${graphConfig.lineWidths[0]});
-plot(t, remoteP, 'Color', '#7E2F8E', 'LineWidth', ${graphConfig.lineWidths[2]});
+stairs(t, remoteP, 'Color', '#7E2F8E', 'LineWidth', ${graphConfig.lineWidths[2]});
 ylabel('P (MW)');
 if ${graphConfig.showGrid ? 'true' : 'false'}
     grid on;
@@ -171,7 +171,7 @@ hold on;
 ${metric === 'fig5' ? `
 ax.YColor = '#0072BD';
 plot(t, pTotal, 'Color', '#0072BD', 'LineWidth', ${graphConfig.lineWidths[0]});
-plot(t, remoteP, 'Color', '#7E2F8E', 'LineWidth', ${graphConfig.lineWidths[2]});
+stairs(t, remoteP, 'Color', '#7E2F8E', 'LineWidth', ${graphConfig.lineWidths[2]});
 ylabel('P (MW)');
 ` : `
 ax.YColor = '#0072BD';
@@ -249,7 +249,7 @@ legend({'P total', 'Freq'}, 'Location', 'northwest');
 ` : metric === 'soc_p' ? `
 ax.YColor = '#0072BD';
 plot(t, data.pTotal.${pk}, 'Color', '#0072BD', 'LineWidth', ${graphConfig.lineWidths[0]});
-plot(t, data.remoteP.${pk}, 'Color', '#7E2F8E', 'LineWidth', ${graphConfig.lineWidths[2]});
+stairs(t, data.remoteP.${pk}, 'Color', '#7E2F8E', 'LineWidth', ${graphConfig.lineWidths[2]});
 ylabel('P (MW)');
 yyaxis right;
 ax.YColor = '#D95319';
@@ -376,9 +376,13 @@ end
   for (let i = 0; i < total; i++) {
     const s = allScripts[i];
     setProgress({ pct: 60 + ((i + 1) / total) * 30, active: true, label: `Generating MATLAB script ${i + 1} of ${total}: ${s.name}...` });
+    const dateStr = (evalData.dataDate || '').replace(/-/g, '');
+    const projLabel = project.includes('SNTL') ? project + 'MWH' : project;
+    const safeName = s.name.replace(/\s+/g, '_').replace(/SWG/g, 'SPPC-');
+    const prefix = `${i + 1}. ${dateStr}_${projLabel}_`;
     
     zipEntries.push({
-      name: `MATLAB_Export/${s.name.replace(/\\s+/g, '_')}.m`,
+      name: `MATLAB_Export/${prefix}${safeName}.m`,
       data: encoder.encode(s.script)
     });
 

@@ -166,7 +166,7 @@ function buildAllPlantsSection(plants, metric, outFolder) {
     ylabel('Q (MVar)');
     legend({'Vab', 'Vbc', 'Vca', 'Q total', 'Q cmd'}, 'Location', 'northeastoutside');
     grid on; title('Plant: ${pk}');
-    formatAxis(ax, t);
+    formatAxis(ax, t, ${i === plants.length - 1 ? 'true' : 'false'});
 `;
     }
   });

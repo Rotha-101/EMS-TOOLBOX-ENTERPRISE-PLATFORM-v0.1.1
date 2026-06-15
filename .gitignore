@@ -17,3 +17,9 @@ patch_matlab.py
 diff_step.txt
 found.txt
 test-download.js
+
+dist-electron-v2/
+dist-electron/
+Test/Data/
+
+Test/

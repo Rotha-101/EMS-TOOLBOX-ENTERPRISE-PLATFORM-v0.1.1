@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Plot from 'react-plotly.js';
 import type { Config } from 'plotly.js';
 import {
@@ -56,6 +56,7 @@ import { ValidationDebug } from './components/ValidationDebug';
 import { CycleCalculation } from './components/CycleCalculation';
 import { DailyEvaluationGraph } from './components/DailyEvaluationGraph';
 import { SettingsWindow } from './components/SettingsWindow';
+import { GlobalProgressModal } from './components/GlobalProgressModal';
 
 export { DailyEvaluationGraph } from './components/DailyEvaluationGraph';
 
@@ -80,6 +81,8 @@ export default function App() {
 
   const project = getHcActiveProject() || 'SNTL1000';
   const { messages } = useAIContext();
+
+  const [alertData, setAlertData] = useState<{ title: string, message: string, type: 'success' | 'error' | 'info' } | null>(null);
 
   const archiveInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -157,9 +160,14 @@ export default function App() {
 
   const handleExportMatlab = async () => {
     try {
-      const request = indexedDB.open('ESS_Toolbox', 1);
       const getEvalData = () => new Promise((resolve) => {
+        const cachedData = useAppStore.getState().evalDataCache[project];
+        if (cachedData) return resolve(cachedData);
+        
+        const request = indexedDB.open('ESS_Toolbox', 1);
+        const timeout = setTimeout(() => resolve(null), 60000); // 60s timeout for massive datasets
         request.onsuccess = (e: any) => {
+          clearTimeout(timeout);
           const db = e.target.result;
           if (!db.objectStoreNames.contains('eval_data')) return resolve(null);
           try {
@@ -169,7 +177,10 @@ export default function App() {
             req.onerror = () => resolve(null);
           } catch (err) { resolve(null); }
         };
-        request.onerror = () => resolve(null);
+        request.onerror = () => {
+          clearTimeout(timeout);
+          resolve(null);
+        };
       });
 
       if (!(window as any).electronAPI) {
@@ -205,9 +216,20 @@ export default function App() {
       const outputZip = await (window as any).electronAPI.selectZipFile();
       if (!outputZip) return;
 
+      const cachedData = useAppStore.getState().evalDataCache[project];
+      if (!cachedData) {
+        setProgress({ pct: 10, active: true, label: 'Loading dataset from local storage...' });
+      } else {
+        setProgress({ pct: 10, active: true, label: 'Loading dataset from memory cache (Fast)...' });
+      }
       const evalData: any = await getEvalData();
       if (!evalData || !evalData.timestamps) {
-        alert("No evaluation data found. Please load data in Daily Evaluation Graph first.");
+        setProgress({ pct: 0, active: false, label: '' });
+        setAlertData({
+          type: 'error',
+          title: 'No Data Found',
+          message: 'No evaluation data found. Please load data in Daily Evaluation Graph first.'
+        });
         return;
       }
 
@@ -222,20 +244,27 @@ export default function App() {
 
       if (result.success) {
         const fileList = (result.files || []).map((f: string) => `  • ${f}`).join('\n');
-        alert(
-          `MATLAB Export completed successfully.\n\n` +
-          `Saved ZIP Archive:\n${outputZip}\n\n` +
-          `Generated .fig files included:\n${fileList}\n\n` +
-          `Extract the ZIP and open any .fig file directly in MATLAB.`
-        );
+        setAlertData({
+          type: 'success',
+          title: 'MATLAB Export Complete',
+          message: `Saved ZIP Archive:\n${outputZip}\n\nGenerated .fig files included:\n${fileList}\n\nExtract the ZIP and open any .fig file directly in MATLAB.`
+        });
       } else {
-        alert(`MATLAB export failed:\n\n${result.error}`);
+        setAlertData({
+          type: 'error',
+          title: 'MATLAB Export Failed',
+          message: result.error
+        });
       }
       setProgress({ pct: 0, active: false, label: '' });
 
     } catch (err: any) {
       console.error("MATLAB export error:", err);
-      alert("Failed to export MATLAB figures. " + (err.message || String(err)));
+      setAlertData({
+        type: 'error',
+        title: 'Export Error',
+        message: err.message || String(err)
+      });
       setProgress({ pct: 0, active: false, label: '' });
     }
   };
@@ -269,9 +298,14 @@ export default function App() {
         }
         
         // 2. Render and capture Daily Evaluation Graphs
-        const request = indexedDB.open('ESS_Toolbox', 1);
         const getEvalData = () => new Promise((resolve) => {
+          const cachedData = useAppStore.getState().evalDataCache[project];
+          if (cachedData) return resolve(cachedData);
+
+          const request = indexedDB.open('ESS_Toolbox', 1);
+          const timeout = setTimeout(() => resolve(null), 60000);
           request.onsuccess = (e: any) => {
+            clearTimeout(timeout);
             const db = e.target.result;
             if (!db.objectStoreNames.contains('eval_data')) return resolve(null);
             try {
@@ -281,10 +315,30 @@ export default function App() {
               req.onerror = () => resolve(null);
             } catch(err) { resolve(null); }
           };
-          request.onerror = () => resolve(null);
+          request.onerror = () => {
+            clearTimeout(timeout);
+            resolve(null);
+          };
         });
 
+        const cachedData = useAppStore.getState().evalDataCache[project];
+        if (!cachedData) {
+          setProgress({ pct: 10, active: true, label: 'Loading dataset from local storage...' });
+        } else {
+          setProgress({ pct: 10, active: true, label: 'Loading dataset from memory cache (Fast)...' });
+        }
         const evalData: any = await getEvalData();
+        
+        if (!evalData || !evalData.timestamps) {
+          setProgress({ pct: 0, active: false, label: '' });
+          setAlertData({
+            type: 'error',
+            title: 'No Data Found',
+            message: 'No evaluation data found. Please load data in Daily Evaluation Graph first.'
+          });
+          return;
+        }
+        
         if (evalData && evalData.timestamps) {
           setProgress({ pct: 60, active: true, label: `Generating Enterprise Portable View...` });
           
@@ -323,10 +377,21 @@ export default function App() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         setProgress({ pct: 0, active: false, label: '' });
+        
+        setAlertData({
+          type: 'success',
+          title: 'ZIP Archive Complete',
+          message: `Successfully generated and downloaded ${filename} containing ${zipEntries.length} files.`
+        });
         return;
       } catch(err: any) {
         console.error("Custom ZIP export error:", err);
-        alert("Failed to build ZIP export. " + (err.message || String(err)));
+        setAlertData({
+          type: 'error',
+          title: 'ZIP Export Failed',
+          message: err.message || String(err)
+        });
+        setProgress({ pct: 0, active: false, label: '' });
         return;
       }
     }
@@ -408,12 +473,36 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-background text-foreground font-sans overflow-hidden">
       {/* Header */}
+      <GlobalProgressModal />
+      
+      {/* Custom Alert Modal */}
+      {alertData && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-md flex items-center justify-center z-[10000] transition-all">
+          <div className={`bg-[#131B2E] border ${alertData.type === 'success' ? 'border-green-500/50' : 'border-red-500/50'} rounded-xl p-6 w-[32rem] max-w-[90vw] shadow-2xl flex flex-col gap-4`}>
+            <h2 className={`font-bold text-lg flex items-center gap-2 ${alertData.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+              {alertData.type === 'success' ? '✅' : '❌'} {alertData.title}
+            </h2>
+            <div className="text-sm text-slate-300 font-mono whitespace-pre-wrap max-h-[40vh] overflow-y-auto pr-2 scrollbar-clean">
+              {alertData.message}
+            </div>
+            <div className="flex justify-end mt-2 pt-4 border-t border-slate-800/50">
+              <button 
+                onClick={() => setAlertData(null)}
+                className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded font-bold tracking-widest text-[11px] uppercase transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <header className="h-12 border-b border-border-v flex items-center justify-between px-4 shrink-0" style={{ background: '#000000' }}>
         <div className="flex items-center gap-3">
-          <img src="/SNT.png" alt="SNT Logo" className="h-4 object-contain" style={{ mixBlendMode: 'screen' }} />
+          <img src="./SNT.png" alt="SNT Logo" className="h-4 object-contain" style={{ mixBlendMode: 'screen' }} />
           <div className="h-4 w-px bg-white/20"></div>
           <h1 className="font-bold tracking-tight text-sm text-white flex items-center">
-            <span>EMS TOOLBOX <span className="font-normal text-white/50">ENTERPRISE PLATFORM</span></span>
+            <span>EMS TOOLBOX <span className="font-normal text-white/50">ENTERPRISE PLATFORM v0.1.1</span></span>
             <span className="font-normal text-[9px] tracking-widest text-white/40 ml-3 pl-3 border-l border-white/20">DEVELOPED BY PERFORMANCE AND ANALYSIS OFFICE</span>
           </h1>
         </div>

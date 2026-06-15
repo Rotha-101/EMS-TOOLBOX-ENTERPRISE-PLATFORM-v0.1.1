@@ -29,6 +29,7 @@ export function generatePortableViewHtml(
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Plotly.js -->
   <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
   <style>
     body {
@@ -71,6 +72,9 @@ export function generatePortableViewHtml(
       <div id="pin-counter-container" class="flex items-center gap-1.5 ml-2 font-mono"></div>
     </div>
     <div class="flex items-center gap-3 text-[10px] font-mono text-gray-600 dark:text-gray-400">
+      <button id="btn-copy-clipboard" onclick="copyGraphsToClipboard()" class="h-6 px-2 rounded transition-colors flex items-center gap-1 font-bold shadow-sm bg-accentBlue text-white hover:bg-blue-600 mr-2">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg> COPY GRAPHS
+      </button>
       <span class="text-gray-500 dark:text-gray-400">ACTIVE GRAPH:</span>
       <select id="select-active-metric" onchange="changeMetric(this.value)" class="h-6 bg-gray-100 dark:bg-[#0F172A] border border-gray-300 dark:border-gray-700 rounded px-1.5 text-[10px] text-gray-900 dark:text-white focus:outline-none focus:border-accentBlue font-bold font-mono">
         ${project === 'SNTL400' ? `
@@ -290,11 +294,11 @@ export function generatePortableViewHtml(
             <div class="flex items-center gap-2">
               <span class="text-gray-500 dark:text-gray-400 shrink-0 text-[9px] w-16">Line Style</span>
               <select id="select-style-${idx}" onchange="updateTraceStyle(${idx}, this.value)" class="flex-1 h-6 bg-gray-100 dark:bg-[#0F172A] border border-gray-300 dark:border-gray-700 rounded px-1 text-[9px] text-gray-900 dark:text-white focus:outline-none focus:border-accentBlue">
-                <option value="solid">— Solid</option>
-                <option value="dash">- - Dashed</option>
-                <option value="dot">··· Dotted</option>
-                <option value="dashdot">-·- Dash-Dot</option>
-                <option value="longdash">— Long Dash</option>
+                <option value="solid">Solid</option>
+                <option value="dash">Dashed</option>
+                <option value="dot">Dotted</option>
+                <option value="dashdot">Dash-Dot</option>
+                <option value="longdash">Long Dash</option>
               </select>
             </div>
           </div>
@@ -500,6 +504,37 @@ export function generatePortableViewHtml(
       activeMetric = val;
       document.getElementById('plot-main-title').innerHTML = '<b>' + evalDataRaw.dataDate + ' | ' + (metricLabels[activeMetric] || '') + '</b>';
       renderAll();
+    }
+
+    async function copyGraphsToClipboard() {
+      const btn = document.getElementById('btn-copy-clipboard');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = 'COPYING...';
+      btn.disabled = true;
+      try {
+        const container = document.getElementById('chart-area-container');
+        const canvas = await html2canvas(container, {
+          backgroundColor: document.documentElement.classList.contains('dark') ? '#0B0F19' : '#F8FAFC',
+          scale: 2
+        });
+        canvas.toBlob(async (blob) => {
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob })
+            ]);
+            btn.innerHTML = 'COPIED!';
+            setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+          } catch (err) {
+            console.error('Clipboard write error:', err);
+            btn.innerHTML = 'ERROR';
+            setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+          }
+        }, 'image/png');
+      } catch (err) {
+        console.error('html2canvas error:', err);
+        btn.innerHTML = 'ERROR';
+        setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+      }
     }
 
     function resetAllConfig() {
@@ -1012,7 +1047,7 @@ export function generatePortableViewHtml(
             applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 1.2 } }, 4)
           ];
 
-          if (socStats.maxIdx !== 0) {
+          if (false /* disabled socStats.maxIdx !== 0 */) {
             traces.push({
               x: [timeX[socStats.maxIdx]],
               y: [socStats.maxSoc],
@@ -1024,7 +1059,7 @@ export function generatePortableViewHtml(
               showlegend: false
             });
           }
-          if (socStats.minIdx !== 0) {
+          if (false /* disabled socStats.minIdx !== 0 */) {
             traces.push({
               x: [timeX[socStats.minIdx]],
               y: [socStats.minSoc],
@@ -1044,7 +1079,7 @@ export function generatePortableViewHtml(
               String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
           };
 
-          if (socStats.maxIdx !== 0) {
+          if (false /* disabled socStats.maxIdx !== 0 */) {
             annotations.push({
               x: timeX[socStats.maxIdx],
               y: socStats.maxSoc,
@@ -1055,7 +1090,7 @@ export function generatePortableViewHtml(
               font: { family: 'Arial, sans-serif', size: 7.5, color: '#000000' }
             });
           }
-          if (socStats.minIdx !== 0) {
+          if (false /* disabled socStats.minIdx !== 0 */) {
             annotations.push({
               x: timeX[socStats.minIdx],
               y: socStats.minSoc,

@@ -327,7 +327,7 @@ export const exportAllGraphsToZip = async (
           traces: [
             applyTrace({ y: evalData.pTotal?.[pk] || [], type: 'scatter', mode: 'lines', name: 'P total', xaxis: 'x', yaxis: 'y', line: { color: '#0072BD', width: 2 } }, 0),
             applyTrace({ y: evalData.cmdP?.[pk] || [], type: 'scatter', mode: 'lines', name: 'P cmd', xaxis: 'x', yaxis: 'y', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-            applyTrace({ y: evalData.remoteP?.[pk] || [], type: 'scatter', mode: 'lines', name: 'Remote P', xaxis: 'x', yaxis: 'y', line: { color: '#731A66', width: 1.6 } }, 2),
+            applyTrace({ y: evalData.remoteP?.[pk] || [], type: 'scatter', mode: 'lines', connectgaps: true, name: 'Remote P', xaxis: 'x', yaxis: 'y', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
             applyTrace({ y: evalData.soc?.[pk] || [], type: 'scatter', mode: 'lines', name: 'SOC', xaxis: 'x', yaxis: 'y2', line: { color: '#D95319', width: 2 } }, 3)
           ],
           layout: getSubplotLayoutSinglePlant1Row(label + ' (Plant 0' + pk.slice(-1) + ') | SOC & Active Power', 'P (MW)', 'SOC (%)')
@@ -371,7 +371,7 @@ export const exportAllGraphsToZip = async (
               traces: [
                 applyTrace({ y: evalData.pTotal?.[pk] || [], type: 'scatter', mode: 'lines', name: 'P total', xaxis: 'x', yaxis: 'y', line: { color: '#0072BD', width: 2 } }, 0),
                 applyTrace({ y: evalData.cmdP?.[pk] || [], type: 'scatter', mode: 'lines', name: 'P cmd', xaxis: 'x', yaxis: 'y', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-                applyTrace({ y: evalData.remoteP?.[pk] || [], type: 'scatter', mode: 'lines', name: 'Remote P', xaxis: 'x', yaxis: 'y', line: { color: '#731A66', width: 1.6 } }, 2),
+                applyTrace({ y: evalData.remoteP?.[pk] || [], type: 'scatter', mode: 'lines', connectgaps: true, name: 'Remote P', xaxis: 'x', yaxis: 'y', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
                 applyTrace({ y: evalData.soc?.[pk] || [], type: 'scatter', mode: 'lines', name: 'SOC', xaxis: 'x', yaxis: 'y2', line: { color: '#D95319', width: 2 } }, 3)
               ],
               layout: getSubplotLayoutSinglePlant1Row('SOC & Active Power', 'P (MW)', 'SOC (%)')
@@ -409,7 +409,7 @@ export const exportAllGraphsToZip = async (
                 traces: [
                   applyTrace({ y: evalData.pTotal?.[pk] || [], type: 'scatter', mode: 'lines', name: 'P total', xaxis: 'x', yaxis: 'y', line: { color: '#0072BD', width: 2 } }, 0),
                   applyTrace({ y: evalData.cmdP?.[pk] || [], type: 'scatter', mode: 'lines', name: 'P cmd', xaxis: 'x', yaxis: 'y', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-                  applyTrace({ y: evalData.remoteP?.[pk] || [], type: 'scatter', mode: 'lines', name: 'Remote P', xaxis: 'x', yaxis: 'y', line: { color: '#731A66', width: 1.6 } }, 2),
+                  applyTrace({ y: evalData.remoteP?.[pk] || [], type: 'scatter', mode: 'lines', connectgaps: true, name: 'Remote P', xaxis: 'x', yaxis: 'y', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
                   applyTrace({ y: evalData.soc?.[pk] || [], type: 'scatter', mode: 'lines', name: 'SOC', xaxis: 'x', yaxis: 'y2', line: { color: '#D95319', width: 2 } }, 3)
                 ],
                 layout: getSubplotLayoutSinglePlant1Row('SOC & Active Power', 'P (MW)', 'SOC (%)')
@@ -436,7 +436,7 @@ export const exportAllGraphsToZip = async (
           traces: [
             applyTrace({ y: evalData.pTotal?.[pk] || [], type: 'scatter', mode: 'lines', name: 'P total', xaxis: 'x', yaxis: 'y', line: { color: '#0072BD', width: 2 } }, 0),
             applyTrace({ y: evalData.cmdP?.[pk] || [], type: 'scatter', mode: 'lines', name: 'P cmd', xaxis: 'x', yaxis: 'y', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
-            applyTrace({ y: evalData.remoteP?.[pk] || [], type: 'scatter', mode: 'lines', name: 'Remote P', xaxis: 'x', yaxis: 'y', line: { color: '#731A66', width: 1.6 } }, 2),
+            applyTrace({ y: evalData.remoteP?.[pk] || [], type: 'scatter', mode: 'lines', connectgaps: true, name: 'Remote P', xaxis: 'x', yaxis: 'y', line: { color: '#731A66', width: 1.6, shape: 'hv' } }, 2),
             applyTrace({ y: evalData.soc?.[pk] || [], type: 'scatter', mode: 'lines', name: 'SOC', xaxis: 'x', yaxis: 'y2', line: { color: '#D95319', width: 2 } }, 3)
           ],
           layout: getSubplotLayoutSinglePlant1Row(label + ' (Plant 0' + pk.slice(-1) + ')', 'P (MW)', 'SOC (%)')
@@ -496,16 +496,21 @@ export const exportAllGraphsToZip = async (
     if (g.name.includes('SWG02')) selectedPlant = 'plant2';
     if (g.name.includes('SWG03')) selectedPlant = 'plant3';
     
+    const dateStr = (evalData.dataDate || '').replace(/-/g, '');
+    const projLabel = project.includes('SNTL') ? project + 'MWH' : project;
+    const safeName = g.name.replace(/\s+/g, '_').replace(/SWG/g, 'SPPC-');
+    const prefix = `${i + 1}. ${dateStr}_${projLabel}_`;
+    
     const htmlStr = generatePortableViewHtml(project, evalData, graphConfig, g.metricId, selectedPlant, []);
     zipEntries.push({
-      name: `Graphs/${g.folder}/Interactive/${g.name}.html`,
+      name: `Graphs/${g.folder}/Interactive/${prefix}${safeName}.html`,
       data: new TextEncoder().encode(htmlStr)
     });
 
     const pngData = await renderGraphToPng(g.traces, g.layout, offscreenDiv, g.composite);
     if (pngData) {
       zipEntries.push({
-        name: `Graphs/${g.folder}/Images/${g.name}.png`,
+        name: `Graphs/${g.folder}/Images/${prefix}${safeName}.png`,
         data: pngData
       });
     }
