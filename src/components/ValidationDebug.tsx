@@ -26,6 +26,37 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
   const [elapsedTime, setElapsedTime] = useState(0);
   const startTimeRef = useRef<number | null>(null);
 
+  
+  const handlePlantUpload = (plantId: string | null, type: 'file' | 'folder') => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.className = 'hidden';
+    if (type === 'folder') {
+      input.setAttribute('webkitdirectory', '');
+      input.setAttribute('directory', '');
+    } else {
+      input.multiple = true;
+      input.accept = '.zip,.rar,.7z,.xlsx,.csv';
+    }
+    input.onchange = async (e: any) => {
+      const rawFiles = [...(e.target.files || [])];
+      if (rawFiles.length === 0) return;
+      const files = rawFiles.map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
+      
+      const tStart = Date.now();
+      try {
+        setUploadMessage('');
+        await hcBulkImport(files, plantId);
+        const duration = ((Date.now() - tStart) / 1000).toFixed(1);
+        setUploadMessage(`Audit complete for ${plantId} in ${duration}s!`);
+        setTimeout(() => setUploadMessage(''), 8000);
+      } catch (err: any) {
+        setUploadMessage(`Error: ${err.message || String(err)}`);
+      }
+    };
+    input.click();
+  };
+
   const formatHHMMSS = (secs: number) => {
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
@@ -198,155 +229,44 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                                {cC > 0 ? ` (${cC})` : ''}
                              </span>
                            </div>
-                         );
-                       })}
-                     </div>
+                        );
+                      })}
+                    </div>
+
                    </div>
                  );
                })}
             </div>
-            
-            {/* Left sidebar Drag & Drop */}
-            <div 
-              className={cn(
-                "mt-4 border-2 border-dashed rounded-lg p-4 flex flex-col items-center justify-center cursor-pointer transition-colors text-center shrink-0",
-                isDragging ? "bg-accent-blue/10 border-accent-blue/50" : "bg-background/50 hover:bg-surface/30 border-border-v"
-              )}
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
-              onDrop={handleDrop}
-              onClick={() => archiveInputRef.current?.click()}
-            >
-              <input 
-                type="file" 
-                ref={archiveInputRef} 
-                className="hidden" 
-                multiple 
-                accept=".zip,.rar,.7z,.xlsx,.csv" 
-                onChange={async (e) => {
-                  const rawFiles = [...(e.target.files || [])];
-                  const filesList = rawFiles.slice(0, 15).map(f => ({
-                    name: f.name,
-                    size: formatBytes(f.size)
-                  }));
-                  if (rawFiles.length > 15) {
-                    filesList.push({
-                      name: `... and ${rawFiles.length - 15} more files`,
-                      size: ''
-                    });
-                  }
-                  setUploadedFiles(filesList);
-
-                  const files = rawFiles.map(f => ({ file: f, path: f.name }));
-                  setPendingFiles(files);
-                  e.target.value = '';
-                  setUploadMessage('Files selected successfully! Click RUN to start audit.');
-                  setTimeout(() => setUploadMessage(''), 5000);
-                }} 
-              />
-              <input 
-                type="file" 
-                ref={folderInputRef} 
-                className="hidden" 
-                {...({webkitdirectory: "", directory: ""} as any)} 
-                onChange={async (e) => {
-                  const rawFiles = [...(e.target.files || [])];
-                  
-                  // Extract top-level archives or files
-                  const filesList = rawFiles.slice(0, 15).map(f => ({
-                    name: f.webkitRelativePath || f.name,
-                    size: formatBytes(f.size)
-                  }));
-                  if (rawFiles.length > 15) {
-                    filesList.push({
-                      name: `... and ${rawFiles.length - 15} more files`,
-                      size: ''
-                    });
-            <div className="flex flex-col gap-2 mt-4">
-                {/* UPLOAD FILE BOX */}
-                <label 
-                  className={cn(
-                    "p-4 border-2 border-dashed rounded bg-surface border-border-v hover:bg-surface-hover hover:border-accent-blue/50 transition-colors flex flex-col items-center justify-center cursor-pointer text-center relative",
-                    isDragging && "bg-accent-blue/10 border-accent-blue"
-                  )}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
-                  onDrop={handleDrop}
-                  onClick={() => archiveInputRef.current?.click()}
-                >
-                  <input 
-                    type="file" 
-                    ref={archiveInputRef} 
-                    className="hidden" 
-                    multiple 
-                    accept=".zip,.rar,.7z,.xlsx,.csv" 
-                    onChange={async (e) => {
-                      if (!e.target.files?.length) return;
-                      await hcBulkImport(e.target.files);
-                      e.target.value = '';
-                      setUploadMessage('Archive loaded successfully! Click RUN to start audit.');
-                      setTimeout(() => setUploadMessage(''), 5000);
-                    }}
-                  />
-                  <Upload size={20} className="mb-2 text-accent-blue opacity-70 pointer-events-none" />
-                  <div className="text-[10px] uppercase font-bold text-foreground/70 pointer-events-none">Upload File(s)</div>
-                </label>
-
-                {/* UPLOAD FOLDER BOX */}
-                <label 
-                  className={cn(
-                    "p-4 border-2 border-dashed rounded bg-surface border-border-v hover:bg-surface-hover hover:border-accent-blue/50 transition-colors flex flex-col items-center justify-center cursor-pointer text-center relative",
-                    isDragging && "bg-accent-blue/10 border-accent-blue"
-                  )}
-                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                  onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
-                  onDrop={handleDrop}
-                  onClick={() => folderInputRef.current?.click()}
-                >
-                  <input 
-                    type="file" 
-                    ref={folderInputRef} 
-                    className="hidden" 
-                    {...({webkitdirectory: "", directory: ""} as any)} 
-                    onChange={async (e) => {
-                      if (!e.target.files?.length) return;
-                      await hcBulkImport(e.target.files);
-                      e.target.value = '';
-                      setUploadMessage('Folder selected successfully! Click RUN to start audit.');
-                      setTimeout(() => setUploadMessage(''), 5000);
-                    }} 
-                  />
-                  <Upload size={20} className="mb-2 text-accent-blue opacity-70 pointer-events-none" />
-                  <div className="text-[10px] uppercase font-bold text-foreground/70 pointer-events-none">Upload Folder</div>
-                </label>
-                
-                {uploadMessage && (
-                  <div className={cn(
-                    "mt-1 text-[10px] px-2 py-1 rounded w-full text-center border font-mono tracking-wide",
-                    uploadMessage.includes('failed') ? "bg-red-500/10 text-red-500 border-red-500/20" : "bg-green-500/10 text-green-500 border-green-500/20"
-                  )}>
-                    {uploadMessage}
-                  </div>
+              {/* Global Upload Box */}
+              <div 
+                className={cn(
+                  "mt-4 border-2 border-dashed rounded-md p-4 flex flex-col items-center justify-center transition-colors text-center shrink-0",
+                  isDragging ? "bg-accent-blue/10 border-accent-blue/50" : "bg-background/20 hover:bg-background/40 border-border-v hover:border-border-v/80"
                 )}
-              </div>
-
-              {/* Uploaded Archives/Folders List */}
-              {uploadedFiles.length > 0 && (
-                <div className="mt-4 w-full border-t border-border-v/30 pt-3">
-                  <div className="text-[9px] uppercase font-bold text-foreground/50 mb-2 font-mono tracking-wider flex justify-between items-center">
-                    <span>Uploaded Archives</span>
-                    <span className="bg-accent-blue/10 text-accent-blue px-1.5 py-0.5 rounded text-[8px] font-bold">{uploadedFiles.length}</span>
-                  </div>
-                  <div className="max-h-36 overflow-y-auto scrollbar-clean space-y-1 pr-1">
-                    {uploadedFiles.map((f, i) => (
-                      <div key={i} className="flex items-center justify-between text-[9px] font-mono bg-foreground/[0.02] border border-border-v/30 rounded p-1.5">
-                        <span className="truncate flex-1 text-left text-foreground/80 font-semibold" title={f.name}>{f.name}</span>
-                        {f.size && <span className="text-[8px] font-mono text-foreground/45 shrink-0 ml-2">{f.size}</span>}
-                      </div>
-                    ))}
-                  </div>
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                onDrop={handleDrop}
+              >
+                <Upload size={24} className="mb-2 text-accent-blue opacity-70" />
+                <div className="text-[10px] uppercase font-bold text-foreground/70 mb-3">UPLOAD ARCHIVE</div>
+                <div className="flex gap-2 w-full">
+                  <Button 
+                    onClick={(e) => { e.stopPropagation(); handlePlantUpload(null, 'file'); }}
+                    className="bg-accent-blue text-foreground hover:bg-blue-600 h-7 text-[9px] flex-1 font-bold px-0"
+                    disabled={getHcBusy()}
+                  >
+                    File
+                  </Button>
+                  <Button 
+                    onClick={(e) => { e.stopPropagation(); handlePlantUpload(null, 'folder'); }}
+                    variant="outline" 
+                    className="border-border-v hover:bg-foreground/10 h-7 text-[9px] flex-1 text-foreground bg-transparent font-bold px-0"
+                    disabled={getHcBusy()}
+                  >
+                    Folder
+                  </Button>
                 </div>
-              )}
+              </div>
 
               {/* Processing Progress Tracker */}
               {progress.active && (
@@ -485,52 +405,30 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                           
                           {/* Dropzone & Reference */}
                           <div className="flex items-stretch gap-2 h-20 mb-2">
-                              <div 
-                                className={cn(
-                                  "flex-1 border-2 border-dashed rounded bg-accent-blue/5 hover:bg-accent-blue/10 border-accent-blue/30 hover:border-accent-blue/60 transition-colors flex flex-col items-center justify-center text-[11px] text-accent-blue font-mono relative"
-                                )}
-                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-accent-blue/20'); }}
-                                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('bg-accent-blue/20'); }}
-                                onDrop={async (e) => {
-                                  e.preventDefault();
-                                  e.currentTarget.classList.remove('bg-accent-blue/20');
-                                  if (!e.dataTransfer.files) return;
-                                  const filesArray = await getFilesFromDataTransfer(e.dataTransfer);
-                                  await hcAcceptFiles(plant, cat, filesArray);
-                                  showUploadSuccess();
-                                }}
-                              >
-                                <span className="mb-1 pointer-events-none font-bold text-[10px] opacity-70 tracking-wider">Drop {cat.label}</span>
-                                <div className="flex gap-2 w-full max-w-[180px] px-2 pointer-events-auto">
-                                  <Button 
-                                    onClick={(e) => { e.stopPropagation(); (e.currentTarget.parentElement?.nextElementSibling as HTMLInputElement)?.click(); }}
-                                    className="bg-accent-blue text-foreground hover:bg-blue-600 h-6 text-[9px] flex-1 font-bold px-0"
-                                  >
-                                    File
-                                  </Button>
-                                  <Button 
-                                    onClick={(e) => { e.stopPropagation(); (e.currentTarget.parentElement?.nextElementSibling?.nextElementSibling as HTMLInputElement)?.click(); }}
-                                    variant="outline" 
-                                    className="border-accent-blue/50 hover:bg-accent-blue/20 h-6 text-[9px] flex-1 text-accent-blue bg-transparent font-bold px-0"
-                                  >
-                                    Folder
-                                  </Button>
-                                </div>
-                                <input type="file" multiple className="hidden" accept=".xlsx,.xls" onChange={async (e) => {
-                                  if (!e.target.files) return;
-                                  const filesArray = Array.from(e.target.files).map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
-                                  e.target.value = '';
-                                  await hcAcceptFiles(plant, cat, filesArray);
-                                  showUploadSuccess();
-                                }}/>
-                                <input type="file" multiple className="hidden" {...({webkitdirectory: "", directory: ""} as any)} onChange={async (e) => {
-                                  if (!e.target.files) return;
-                                  const filesArray = Array.from(e.target.files).map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
-                                  e.target.value = '';
-                                  await hcAcceptFiles(plant, cat, filesArray);
-                                  showUploadSuccess();
-                                }}/>
-                              </div>
+                            <label 
+                              className={cn(
+                                "flex-1 border-2 border-dashed rounded bg-accent-blue/5 hover:bg-accent-blue/10 border-accent-blue/30 hover:border-accent-blue/60 transition-colors flex flex-col items-center justify-center cursor-pointer text-[11px] text-accent-blue font-mono"
+                              )}
+                              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-accent-blue/20'); }}
+                              onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('bg-accent-blue/20'); }}
+                              onDrop={async (e) => {
+                                e.preventDefault();
+                                e.currentTarget.classList.remove('bg-accent-blue/20');
+                                if (!e.dataTransfer.files) return;
+                                const filesArray = await getFilesFromDataTransfer(e.dataTransfer);
+                                await hcAcceptFiles(plant, cat, filesArray);
+                                showUploadSuccess();
+                              }}
+                            >
+                              <span>Drop {cat.label} xlsx (or click)</span>
+                              <input type="file" multiple className="hidden" accept=".xlsx,.xls" onChange={async (e) => {
+                                if (!e.target.files) return;
+                                const filesArray = Array.from(e.target.files).map(f => ({ file: f, path: f.webkitRelativePath || f.name }));
+                                e.target.value = '';
+                                await hcAcceptFiles(plant, cat, filesArray);
+                                showUploadSuccess();
+                              }}/>
+                            </label>
                             
                             <div className="w-36 shrink-0 bg-surface border border-border-v rounded flex flex-col p-1.5 relative overflow-hidden">
                               <span className="text-[7px] uppercase font-bold text-foreground/40 mb-1 tracking-wider">Filename Example</span>
@@ -590,7 +488,6 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
               );
             })}
          </div>
-      </div>
-    </section>
+      </section>
   );
 }

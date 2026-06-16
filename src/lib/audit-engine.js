@@ -1578,13 +1578,13 @@ async function hcAutoClassify(o) {
   return type;
 }
 
-async function hcBulkImport(rawList) {
+async function hcBulkImport(rawList, targetPlantId = null) {
   if (hcBusy) { hcLog('Busy — wait for the current operation to finish', 'warn'); return; }
   hcSetBusy(true, 'bulk');
   // Trigger progress bar immediately with a clear loading message
   hcSetProgress(0, true, 'Initializing file pipeline...');
   try { 
-    await hcBulkImportInner(rawList); 
+    await hcBulkImportInner(rawList, targetPlantId); 
   } catch (err) {
     hcSetProgress(0, false);
     throw err;
@@ -1592,7 +1592,7 @@ async function hcBulkImport(rawList) {
     hcSetBusy(false); 
   }
 }
-async function hcBulkImportInner(rawList) {
+async function hcBulkImportInner(rawList, targetPlantId = null) {
   // Expand any archives (zip / rar / 7z) first
   const archives = rawList.filter(o => ARCHIVE_RE.test(o.file.name));
   if (archives.length) {
@@ -1659,8 +1659,8 @@ async function hcBulkImportInner(rawList) {
         const type = await hcAutoClassify(o);
         const catKey = type ? HC_TYPE_TO_CAT[type] : null;
         if (!catKey) return { kind: 'unclassified' };
-        const plantId = extractPlantId(o.path, o.file);
-        const report  = await hcCheckFile(o); // probe result already cached — no extra read
+        const plantId = targetPlantId || extractPlantId(o.path, o.file);
+        const report  = await hcCheckFile(o, targetPlantId); // probe result already cached — no extra read
         const actualCat = HC_TYPE_TO_CAT[report.entry.type] || catKey;
         return { kind: 'ok', o, catKey, plantId, report, actualCat };
       } catch (err) {
@@ -2099,7 +2099,7 @@ function tsToISO(ms) {
 }
 
 // Run health check on one xlsx entry. Returns a report object.
-async function hcCheckFile(o) {
+async function hcCheckFile(o, targetPlantId = null) {
   // Probe to classify
   let type = null, plantId = 'Plant_unknown', deviceName = '';
   try {
@@ -2114,7 +2114,7 @@ async function hcCheckFile(o) {
       }
     }
     if (!type) return { entry: { ...o, type: null, plantId, deviceName }, status: 'critical', statusReason: ['unclassified'], N: 0 };
-    plantId = extractPlantId(o.path, o.file);
+    plantId = targetPlantId || extractPlantId(o.path, o.file);
     if (TYPE[type].hasDeviceCol) {
       const r = aoa[TYPE[type].dataStart];
       if (r && r[2] != null) deviceName = String(r[2]).trim();
