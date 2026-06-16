@@ -968,9 +968,6 @@ function initValidationDB() {
     return null;
   }
 
-  }
-
-
 async function hcInitProjectsAsync() {
   for (const proj of HC_PROJECTS) {
     const savedData = await loadProjectValidationData(proj.id);
