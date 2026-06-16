@@ -150,24 +150,6 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
           >
             Folder
           </Button>
-          <Button 
-            className="bg-[#383b63] text-foreground/80 h-7 text-[10px] font-bold px-6 shadow-none rounded-sm border-none opacity-50 cursor-not-allowed pointer-events-none hidden"
-            disabled
-          >
-            RUN
-          </Button>
-          <Button 
-            className="bg-red-600 text-white hover:bg-red-500 h-7 text-[10px] font-bold px-6 shadow-none rounded-sm border-none"
-            onClick={() => {
-              hcForceStop();
-              hcResetActiveProject();
-              setPendingFiles([]);
-              setUploadedFiles([]);
-              setProgress({ pct: 0, active: false, label: '' });
-            }}
-          >
-            STOP
-          </Button>
           <div className="w-px h-5 bg-border-v mx-1"></div>
           <Button 
             className="bg-red-600 text-white hover:bg-red-500 h-7 text-[10px] font-bold px-6 shadow-none rounded-sm border-none uppercase"
