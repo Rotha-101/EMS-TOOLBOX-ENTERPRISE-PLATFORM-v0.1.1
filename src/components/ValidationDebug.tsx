@@ -337,9 +337,6 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                 );
               })()}
             </div>
-
-
-         </div>
          
          {/* Right area for Plant Category Grid */}
          <div className="flex-1 overflow-y-auto scrollbar-clean p-4 bg-panel space-y-6">
@@ -487,6 +484,7 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                 </div>
               );
             })}
+         </div>
          </div>
       </section>
   );
