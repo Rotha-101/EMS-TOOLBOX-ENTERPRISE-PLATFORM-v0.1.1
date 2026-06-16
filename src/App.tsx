@@ -548,7 +548,7 @@ export default function App() {
               <NavItem icon={<Zap size={14} />} label="Cycle Calculation" active={activeTab === 'power'} onClick={() => switchTab('power')} />
               <NavItem icon={<Battery size={14} />} label="Daily Evaluation Graph" active={activeTab === 'soc'} onClick={() => switchTab('soc')} />
               <NavItem icon={<Download size={14} />} label="Report Export" active={activeTab === 'export'} onClick={() => switchTab('export')} />
-              <NavItem icon={<FileCode size={14} />} label="JS Chart Scripts" active={activeTab === 'jscript'} onClick={() => switchTab('jscript')} />
+
 
               <NavItem icon={<Bot size={14} />} label="AI Agent" active={activeTab === 'ai'} onClick={() => switchTab('ai')} />
             </div>
@@ -817,10 +817,7 @@ export default function App() {
                 </section>
               );
             })()
-          ) : activeTab === 'jscript' ? (
-            <section className="flex-1 min-h-0 flex flex-col overflow-hidden">
-              <ImportChartScript project={project} theme={theme} />
-            </section>
+
           ) : activeTab === 'ai' ? (
             <AIAgent />
           ) : activeTab === 'smart_report' ? (
