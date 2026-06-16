@@ -414,7 +414,11 @@ export function ValidationDebug({ progress, setProgress }: { progress: { pct: nu
                     </div>
                     <button 
                       className="text-[10px] uppercase font-bold text-red-400 hover:text-red-300 px-3 py-1.5 border border-red-500/20 hover:border-red-500/50 rounded transition-colors" 
-                      onClick={() => hcClearPlantData(plant.id)}
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to clear data for ${plant.name}?`)) {
+                          hcClearPlantData(plant.id, true);
+                        }
+                      }}
                     >
                       Clear Data
                     </button>

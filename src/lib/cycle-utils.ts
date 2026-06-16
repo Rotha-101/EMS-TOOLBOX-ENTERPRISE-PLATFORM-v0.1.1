@@ -42,7 +42,26 @@ export function buildPlantCycleTableJs(rows: ESSRow[], plantLabel: string): Plan
     if (a.ESS_Number !== b.ESS_Number) return a.ESS_Number - b.ESS_Number;
     return a.StartTime.getTime() - b.StartTime.getTime();
   });
+
+  // Calculate True Plant Average (MATLAB Logic)
+  // Gather the absolute LAST row chronologically for EVERY parsed ESS
+  const byESS: Record<string, number> = {};
+  const byESSTime: Record<string, number> = {};
   
+  for (const r of sorted) {
+    if (isNaN(r.SACU_Number) || isNaN(r.ESS_Number) || isNaN(r.EquivalentNumberOfCycles)) continue;
+    const key = `${r.SACU_Number}_${r.ESS_Number}`;
+    const t = r.StartTime.getTime();
+    if (!byESSTime[key] || t > byESSTime[key]) {
+      byESSTime[key] = t;
+      byESS[key] = r.EquivalentNumberOfCycles;
+    }
+  }
+  
+  const allTrueCycles = Object.values(byESS).filter(v => v !== null && !isNaN(v));
+  const truePlantAvg = allTrueCycles.length > 0 ? allTrueCycles.reduce((s, c) => s + c, 0) / allTrueCycles.length : NaN;
+  
+  // Format for the UI tables
   const uniqueSACUs = Array.from(new Set(sorted.map(r => r.SACU_Number).filter(n => !isNaN(n)))).sort((a, b) => a - b);
   const outTbl: PlantBlock[] = [];
   
@@ -89,11 +108,8 @@ export function buildPlantCycleTableJs(rows: ESSRow[], plantLabel: string): Plan
     outTbl.push(...blockRows);
   }
   
-  const blockAverages = outTbl.map(r => r.AverageCycleOfBlock).filter(v => v !== null && !isNaN(v)) as number[];
-  const plantAvg = blockAverages.length > 0 ? blockAverages.reduce((s, a) => s + a, 0) / blockAverages.length : NaN;
-  
-  if (outTbl.length > 0 && !isNaN(plantAvg)) {
-    outTbl[0].AverageCycleOfSPPC = plantAvg;
+  if (outTbl.length > 0 && !isNaN(truePlantAvg)) {
+    outTbl[0].AverageCycleOfSPPC = truePlantAvg;
   }
   
   return outTbl;
