@@ -116,18 +116,9 @@ export function CycleCalculation({ project, theme }: { project: string, theme: '
         const SPPC2_SACU = [15, 18, 21, 24, 27, 30, 31, 32, 33, 34];
         const SPPC3_SACU = [19, 20, 22, 23, 25, 26, 28, 29, 35, 36, 37];
         
-        let p1Rows: ESSRow[] = [];
-        let p2Rows: ESSRow[] = [];
-        let p3Rows: ESSRow[] = [];
-
-        if (project === 'SNTL400') {
-          p1Rows = allParsedRows.filter(r => String(r.PlantName).includes('-01'));
-          p2Rows = allParsedRows.filter(r => String(r.PlantName).includes('-02'));
-        } else {
-          p1Rows = allParsedRows.filter(r => SPPC1_SACU.includes(r.SACU_Number));
-          p2Rows = allParsedRows.filter(r => SPPC2_SACU.includes(r.SACU_Number));
-          p3Rows = allParsedRows.filter(r => SPPC3_SACU.includes(r.SACU_Number));
-        }
+        let p1Rows = allParsedRows.filter(r => SPPC1_SACU.includes(r.SACU_Number));
+        let p2Rows = allParsedRows.filter(r => SPPC2_SACU.includes(r.SACU_Number));
+        let p3Rows = allParsedRows.filter(r => SPPC3_SACU.includes(r.SACU_Number));
         
         const p1Blocks = buildPlantCycleTableJs(p1Rows, "SWG01 (Plant 01)");
         const p2Blocks = buildPlantCycleTableJs(p2Rows, "SWG02 (Plant 02)");
