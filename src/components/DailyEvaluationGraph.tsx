@@ -794,8 +794,10 @@ export function DailyEvaluationGraph({
         
         const pairs = [
           { label: 'SWG01-SWG02', a: 0, b: 1 },
-          { label: 'SWG02-SWG03', a: 1, b: 2 },
-          { label: 'SWG03-SWG01', a: 2, b: 0 }
+          ...(project !== 'SNTL400' ? [
+            { label: 'SWG02-SWG03', a: 1, b: 2 },
+            { label: 'SWG03-SWG01', a: 2, b: 0 }
+          ] : [])
         ];
         
         for (const p of pairs) {
@@ -1756,6 +1758,11 @@ export function DailyEvaluationGraph({
       }
 
       const chartArea = document.getElementById('chart-area');
+      window.existingPlots = window.existingPlots || {};
+      chartArea.querySelectorAll('.js-plotly-plot').forEach(plot => {
+        if (plot.id) window.existingPlots[plot.id] = plot;
+      });
+      window.reusedPlotIds = new Set();
       chartArea.innerHTML = '';
       
       const timeX = evalDataRaw.timestamps.map(t => {
@@ -1809,7 +1816,23 @@ export function DailyEvaluationGraph({
       };
 
       const createPlotWithEvents = (div, traces, layout, graphId) => {
-        Plotly.newPlot(div, traces, layout, plotCfgZoom).then(gd => {
+        const isReused = window.existingPlots && window.existingPlots[graphId];
+        let targetDiv = div;
+        if (isReused) {
+           targetDiv = window.existingPlots[graphId];
+           if (div.parentNode) {
+             div.parentNode.replaceChild(targetDiv, div);
+           }
+           window.reusedPlotIds.add(graphId);
+        } else {
+           targetDiv.id = graphId;
+        }
+
+        const plotPromise = isReused ? Plotly.react(targetDiv, traces, layout, plotCfgZoom) : Plotly.newPlot(targetDiv, traces, layout, plotCfgZoom);
+        
+        plotPromise.then(gd => {
+          if (isReused) return;
+          
           gd.on('plotly_hover', function(data) {
             if(data && data.points && data.points.length > 0) {
               window.lastHoveredPt = data.points[0];
@@ -1982,7 +2005,7 @@ export function DailyEvaluationGraph({
         toImageButtonOptions: { format: 'png', filename: 'plot_export', scale: 2 }
       };
 
-      const hasPlant3 = evalDataRaw.soc.plant3 && evalDataRaw.soc.plant3.some(v => !isNaN(v));
+      const hasPlant3 = project !== 'SNTL400' && evalDataRaw.soc.plant3 && evalDataRaw.soc.plant3.some(v => !isNaN(v));
       const plants = ['plant1', 'plant2'];
       if (hasPlant3) plants.push('plant3');
 
@@ -2162,10 +2185,10 @@ export function DailyEvaluationGraph({
           
           if (statsIndex === 0) {
             overlay.innerHTML = '<div class="font-bold border-b border-gray-200 pb-0.5 mb-1 text-[8px]">Daily cycle (' + evalDataRaw.dataDate + '):</div>' +
-              '<div>Cycle_Plant 01 = ' + evalDataRaw.dailyCycle.plant1.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant1 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant1 < 0.8 ? 'Warning' : 'Normal') + '</div>' +
-              '<div>Cycle_Plant 02 = ' + evalDataRaw.dailyCycle.plant2.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant2 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant2 < 0.8 ? 'Warning' : 'Normal') + '</div>' +
-              (hasPlant3 ? '<div>Cycle_Plant 03 = ' + evalDataRaw.dailyCycle.plant3.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant3 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant3 < 0.8 ? 'Warning' : 'Normal') + '</div>' : '') +
-              '<div class="font-bold text-blue-600 border-t border-gray-200 pt-0.5 mt-0.5">Cycle_Average Daily Cycle = ' + avgDaily.toFixed(3) + ' -> ' + (avgDaily < 0.5 ? 'Take action' : avgDaily < 0.8 ? 'Warning' : 'Normal') + '</div>';
+              '<div>Cycle_Plant 01 = ' + evalDataRaw.dailyCycle.plant1.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant1 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant1 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalDataRaw.dailyCycle.plant1 > 1 ? 'Alert' : 'Normal')) + '</div>' +
+              '<div>Cycle_Plant 02 = ' + evalDataRaw.dailyCycle.plant2.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant2 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant2 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalDataRaw.dailyCycle.plant2 > 1 ? 'Alert' : 'Normal')) + '</div>' +
+              (hasPlant3 ? '<div>Cycle_Plant 03 = ' + evalDataRaw.dailyCycle.plant3.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant3 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant3 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalDataRaw.dailyCycle.plant3 > 1 ? 'Alert' : 'Normal')) + '</div>' : '') +
+              '<div class="font-bold text-blue-600 border-t border-gray-200 pt-0.5 mt-0.5">Cycle_Average Daily Cycle = ' + avgDaily.toFixed(3) + ' -> ' + (avgDaily < 0.5 ? 'Take action' : avgDaily < 0.8 ? 'Warning' : (project === 'SNTL400' && avgDaily > 1 ? 'Alert' : 'Normal')) + '</div>';
             div.appendChild(overlay);
           } else if (statsIndex === 1) {
             overlay.innerHTML = '<div class="font-bold border-b border-gray-200 pb-0.5 mb-1 text-[8px]">Plant Total Cycle (' + evalDataRaw.dataDate + '):</div>' +
@@ -2267,12 +2290,22 @@ export function DailyEvaluationGraph({
             applyTrace({ y: evalDataRaw.vbc[pk], type: 'scatter', mode: 'lines', name: 'Vbc', line: { color: '#77AC30', width: 1.2 } }, 1),
             applyTrace({ y: evalDataRaw.vca[pk], type: 'scatter', mode: 'lines', name: 'Vca', line: { color: '#7E2F8E', width: 1.2 } }, 2),
             applyTrace({ y: evalDataRaw.qTotal[pk], type: 'scatter', mode: 'lines', name: 'Q total', yaxis: 'y2', line: { color: '#D95319', width: 1.3 } }, 3),
-            applyTrace({ y: evalDataRaw.cmdQ[pk], type: 'scatter', mode: 'lines', name: 'Q command from NCC', showlegend: Boolean((evalData?.cmdQ?.[pk] || evalData?.cmdQ?.[pk])?.some((v) => v != null && !isNaN(v))), yaxis: 'y2', line: { color: '#000000', width: 1.8 } }, 4)
+            applyTrace({ y: evalDataRaw.cmdQ[pk], type: 'scatter', mode: 'lines', name: 'Q command from NCC', showlegend: Boolean((evalDataRaw?.cmdQ?.[pk] || evalDataRaw?.cmdQ?.[pk])?.some((v) => v != null && !isNaN(v))), yaxis: 'y2', line: { color: '#000000', width: 1.8 } }, 4)
           ];
           const layout = getMATLABLayout(drawPanelTitle(pk) + ' | Reactive Power & Voltage', 'V (kV)', 'Q (MVar)', undefined, undefined, 'fig6_' + pk);
           createPlotWithEvents(div, traces, layout, 'fig6_' + pk);
         });
       }
+      setTimeout(() => {
+        if (window.existingPlots) {
+          Object.keys(window.existingPlots).forEach(id => {
+            if (!window.reusedPlotIds.has(id)) {
+              Plotly.purge(window.existingPlots[id]);
+            }
+          });
+        }
+        window.existingPlots = {};
+      }, 50);
     }
 
     function handleHtmlPlotDoubleClick(graphId) {
@@ -3052,6 +3085,11 @@ export function DailyEvaluationGraph({
       }
 
       const chartArea = document.getElementById('chart-area');
+      window.existingPlots = window.existingPlots || {};
+      chartArea.querySelectorAll('.js-plotly-plot').forEach(plot => {
+        if (plot.id) window.existingPlots[plot.id] = plot;
+      });
+      window.reusedPlotIds = new Set();
       chartArea.innerHTML = '';
       
       const timeX = evalDataRaw.timestamps.map(t => {
@@ -3105,7 +3143,23 @@ export function DailyEvaluationGraph({
       };
 
       const createPlotWithEvents = (div, traces, layout, graphId) => {
-        Plotly.newPlot(div, traces, layout, plotCfgZoom).then(gd => {
+        const isReused = window.existingPlots && window.existingPlots[graphId];
+        let targetDiv = div;
+        if (isReused) {
+           targetDiv = window.existingPlots[graphId];
+           if (div.parentNode) {
+             div.parentNode.replaceChild(targetDiv, div);
+           }
+           window.reusedPlotIds.add(graphId);
+        } else {
+           targetDiv.id = graphId;
+        }
+
+        const plotPromise = isReused ? Plotly.react(targetDiv, traces, layout, plotCfgZoom) : Plotly.newPlot(targetDiv, traces, layout, plotCfgZoom);
+        
+        plotPromise.then(gd => {
+          if (isReused) return;
+          
           gd.on('plotly_hover', function(data) {
             if(data && data.points && data.points.length > 0) {
               window.lastHoveredPt = data.points[0];
@@ -3278,7 +3332,7 @@ export function DailyEvaluationGraph({
         toImageButtonOptions: { format: 'png', filename: 'plot_export', scale: 2 }
       };
 
-      const hasPlant3 = evalDataRaw.soc.plant3 && evalDataRaw.soc.plant3.some(v => !isNaN(v));
+      const hasPlant3 = project !== 'SNTL400' && evalDataRaw.soc.plant3 && evalDataRaw.soc.plant3.some(v => !isNaN(v));
       const plants = ['plant1', 'plant2'];
       if (hasPlant3) plants.push('plant3');
 
@@ -3458,10 +3512,10 @@ export function DailyEvaluationGraph({
           
           if (statsIndex === 0) {
             overlay.innerHTML = '<div class="font-bold border-b border-gray-200 pb-0.5 mb-1 text-[8px]">Daily cycle (' + evalDataRaw.dataDate + '):</div>' +
-              '<div>Cycle_Plant 01 = ' + evalDataRaw.dailyCycle.plant1.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant1 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant1 < 0.8 ? 'Warning' : 'Normal') + '</div>' +
-              '<div>Cycle_Plant 02 = ' + evalDataRaw.dailyCycle.plant2.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant2 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant2 < 0.8 ? 'Warning' : 'Normal') + '</div>' +
-              (hasPlant3 ? '<div>Cycle_Plant 03 = ' + evalDataRaw.dailyCycle.plant3.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant3 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant3 < 0.8 ? 'Warning' : 'Normal') + '</div>' : '') +
-              '<div class="font-bold text-blue-600 border-t border-gray-200 pt-0.5 mt-0.5">Cycle_Average Daily Cycle = ' + avgDaily.toFixed(3) + ' -> ' + (avgDaily < 0.5 ? 'Take action' : avgDaily < 0.8 ? 'Warning' : 'Normal') + '</div>';
+              '<div>Cycle_Plant 01 = ' + evalDataRaw.dailyCycle.plant1.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant1 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant1 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalDataRaw.dailyCycle.plant1 > 1 ? 'Alert' : 'Normal')) + '</div>' +
+              '<div>Cycle_Plant 02 = ' + evalDataRaw.dailyCycle.plant2.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant2 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant2 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalDataRaw.dailyCycle.plant2 > 1 ? 'Alert' : 'Normal')) + '</div>' +
+              (hasPlant3 ? '<div>Cycle_Plant 03 = ' + evalDataRaw.dailyCycle.plant3.toFixed(3) + ' -> ' + (evalDataRaw.dailyCycle.plant3 < 0.5 ? 'Take action' : evalDataRaw.dailyCycle.plant3 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalDataRaw.dailyCycle.plant3 > 1 ? 'Alert' : 'Normal')) + '</div>' : '') +
+              '<div class="font-bold text-blue-600 border-t border-gray-200 pt-0.5 mt-0.5">Cycle_Average Daily Cycle = ' + avgDaily.toFixed(3) + ' -> ' + (avgDaily < 0.5 ? 'Take action' : avgDaily < 0.8 ? 'Warning' : (project === 'SNTL400' && avgDaily > 1 ? 'Alert' : 'Normal')) + '</div>';
             div.appendChild(overlay);
           } else if (statsIndex === 1) {
             overlay.innerHTML = '<div class="font-bold border-b border-gray-200 pb-0.5 mb-1 text-[8px]">Plant Total Cycle (' + evalDataRaw.dataDate + '):</div>' +
@@ -3563,12 +3617,22 @@ export function DailyEvaluationGraph({
             applyTrace({ y: evalDataRaw.vbc[pk], type: 'scatter', mode: 'lines', name: 'Vbc', line: { color: '#77AC30', width: 1.2 } }, 1),
             applyTrace({ y: evalDataRaw.vca[pk], type: 'scatter', mode: 'lines', name: 'Vca', line: { color: '#7E2F8E', width: 1.2 } }, 2),
             applyTrace({ y: evalDataRaw.qTotal[pk], type: 'scatter', mode: 'lines', name: 'Q total', yaxis: 'y2', line: { color: '#D95319', width: 1.3 } }, 3),
-            applyTrace({ y: evalDataRaw.cmdQ[pk], type: 'scatter', mode: 'lines', name: 'Q command from NCC', showlegend: Boolean((evalData?.cmdQ?.[pk] || evalData?.cmdQ?.[pk])?.some((v) => v != null && !isNaN(v))), yaxis: 'y2', line: { color: '#000000', width: 1.8 } }, 4)
+            applyTrace({ y: evalDataRaw.cmdQ[pk], type: 'scatter', mode: 'lines', name: 'Q command from NCC', showlegend: Boolean((evalDataRaw?.cmdQ?.[pk] || evalDataRaw?.cmdQ?.[pk])?.some((v) => v != null && !isNaN(v))), yaxis: 'y2', line: { color: '#000000', width: 1.8 } }, 4)
           ];
           const layout = getMATLABLayout(drawPanelTitle(pk) + ' | Reactive Power & Voltage', 'V (kV)', 'Q (MVar)', undefined, undefined, 'fig6_' + pk);
           createPlotWithEvents(div, traces, layout, 'fig6_' + pk);
         });
       }
+      setTimeout(() => {
+        if (window.existingPlots) {
+          Object.keys(window.existingPlots).forEach(id => {
+            if (!window.reusedPlotIds.has(id)) {
+              Plotly.purge(window.existingPlots[id]);
+            }
+          });
+        }
+        window.existingPlots = {};
+      }, 50);
     }
 
     function handleHtmlPlotDoubleClick(graphId) {
@@ -3902,7 +3966,7 @@ export function DailyEvaluationGraph({
     };
 
     if (activeMetric === 'f_p') {
-      const hasPlant3 = evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
+      const hasPlant3 = project !== 'SNTL400' && evalDataRaw.soc.plant3 && evalDataRaw.soc.plant3.some(v => !isNaN(v));
       const drawPanel1 = (pk: 'plant1' | 'plant2' | 'plant3', title: string) => (
         <div className="h-[280px] w-full relative mb-1" key={pk}>
           <Plot
@@ -3928,7 +3992,7 @@ export function DailyEvaluationGraph({
     }
 
     if (activeMetric === 'soc_p') {
-      const hasPlant3 = evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
+      const hasPlant3 = project !== 'SNTL400' && evalDataRaw.soc.plant3 && evalDataRaw.soc.plant3.some(v => !isNaN(v));
       const drawPanel2 = (pk: 'plant1' | 'plant2' | 'plant3', title: string) => (
         <div className="h-[280px] w-full relative mb-1" key={pk}>
           <Plot
@@ -3956,7 +4020,7 @@ export function DailyEvaluationGraph({
     }
 
     if (activeMetric === 'v_q') {
-      const hasPlant3 = evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
+      const hasPlant3 = project !== 'SNTL400' && evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
       const drawPanel3 = (pk: 'plant1' | 'plant2' | 'plant3', title: string) => (
         <div className="h-[280px] w-full relative mb-1" key={pk}>
           <Plot
@@ -4039,7 +4103,7 @@ export function DailyEvaluationGraph({
 
 
     if (activeMetric === 'fig4') {
-      const hasPlant3 = evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
+      const hasPlant3 = project !== 'SNTL400' && evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
       const drawPanel4 = (pk: 'plant1' | 'plant2' | 'plant3', title: string) => (
         <div className="flex flex-col w-full border-b-[3px] border-border-v/50 pb-4 mb-4" key={pk}>
           <div className="text-center text-[12px] tracking-wider mb-2 font-sans font-bold" style={{ color: graphConfig.bgWhite ? '#000000' : '#E0E0E0' }}>
@@ -4095,7 +4159,7 @@ export function DailyEvaluationGraph({
     }
 
     if (activeMetric === 'fig5') {
-      const hasPlant3 = evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
+      const hasPlant3 = project !== 'SNTL400' && evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
       const avgDaily = (evalData.dailyCycle.plant1 + evalData.dailyCycle.plant2 + (hasPlant3 ? evalData.dailyCycle.plant3 : 0)) / (hasPlant3 ? 3 : 2);
       const avgTotal = (evalData.totalCycle.plant1 + evalData.totalCycle.plant2 + (hasPlant3 ? evalData.totalCycle.plant3 : 0)) / (hasPlant3 ? 3 : 2);
 
@@ -4230,10 +4294,10 @@ export function DailyEvaluationGraph({
               <DraggableOverlay initialX={64} initialY={40}>
                 <div className="bg-white/95 border border-blue-500/80 px-2 py-1 text-[7.5px] font-mono text-black shadow-sm rounded-sm leading-relaxed flex flex-col max-w-[190px]">
                   <div className="font-bold border-b border-gray-200 pb-0.5 mb-1 text-[8px]">Daily cycle ({evalData.dataDate}):</div>
-                  <div>Cycle_Plant 01 = {evalData.dailyCycle.plant1.toFixed(3)} -&gt; {evalData.dailyCycle.plant1 < 0.5 ? 'Take action' : evalData.dailyCycle.plant1 < 0.8 ? 'Warning' : 'Normal'}</div>
-                  <div>Cycle_Plant 02 = {evalData.dailyCycle.plant2.toFixed(3)} -&gt; {evalData.dailyCycle.plant2 < 0.5 ? 'Take action' : evalData.dailyCycle.plant2 < 0.8 ? 'Warning' : 'Normal'}</div>
-                  {hasPlant3 && <div>Cycle_Plant 03 = {evalData.dailyCycle.plant3.toFixed(3)} -&gt; {evalData.dailyCycle.plant3 < 0.5 ? 'Take action' : evalData.dailyCycle.plant3 < 0.8 ? 'Warning' : 'Normal'}</div>}
-                  <div className="font-bold text-blue-600 border-t border-gray-200 pt-0.5 mt-0.5">Cycle_Average Daily Cycle = {avgDaily.toFixed(3)} -&gt; {avgDaily < 0.5 ? 'Take action' : avgDaily < 0.8 ? 'Warning' : 'Normal'}</div>
+                  <div>Cycle_Plant 01 = {evalData.dailyCycle.plant1.toFixed(3)} -&gt; {evalData.dailyCycle.plant1 < 0.5 ? 'Take action' : evalData.dailyCycle.plant1 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalData.dailyCycle.plant1 > 1 ? 'Alert' : 'Normal')}</div>
+                  <div>Cycle_Plant 02 = {evalData.dailyCycle.plant2.toFixed(3)} -&gt; {evalData.dailyCycle.plant2 < 0.5 ? 'Take action' : evalData.dailyCycle.plant2 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalData.dailyCycle.plant2 > 1 ? 'Alert' : 'Normal')}</div>
+                  {hasPlant3 && <div>Cycle_Plant 03 = {evalData.dailyCycle.plant3.toFixed(3)} -&gt; {evalData.dailyCycle.plant3 < 0.5 ? 'Take action' : evalData.dailyCycle.plant3 < 0.8 ? 'Warning' : (project === 'SNTL400' && evalData.dailyCycle.plant3 > 1 ? 'Alert' : 'Normal')}</div>}
+                  <div className="font-bold text-blue-600 border-t border-gray-200 pt-0.5 mt-0.5">Cycle_Average Daily Cycle = {avgDaily.toFixed(3)} -&gt; {avgDaily < 0.5 ? 'Take action' : avgDaily < 0.8 ? 'Warning' : (project === 'SNTL400' && avgDaily > 1 ? 'Alert' : 'Normal')}</div>
                 </div>
               </DraggableOverlay>
             );
@@ -4294,7 +4358,7 @@ export function DailyEvaluationGraph({
     }
 
     if (activeMetric === 'fig6') {
-      const hasPlant3 = evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
+      const hasPlant3 = project !== 'SNTL400' && evalData.soc.plant3 && evalData.soc.plant3.some(v => !isNaN(v));
       const drawPanel6 = (pk: 'plant1' | 'plant2' | 'plant3', title: string) => (
         <div className="h-[280px] w-full relative mb-1" key={pk}>
           <Plot
