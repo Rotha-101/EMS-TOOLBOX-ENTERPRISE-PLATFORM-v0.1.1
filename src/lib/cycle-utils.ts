@@ -90,8 +90,8 @@ export function buildPlantCycleTableJs(rows: ESSRow[], plantLabel: string): Plan
     outTbl.push(...blockRows);
   }
   
-  const validBlocks = outTbl.map(b => b.AverageCycleOfBlock).filter(v => v !== null && !isNaN(v as number)) as number[];
-  const truePlantAvg = validBlocks.length > 0 ? validBlocks.reduce((s, c) => s + c, 0) / validBlocks.length : NaN;
+  const validCycles = outTbl.map(b => b.LastEquivalentNumberOfCycle).filter(v => v !== null && !isNaN(v));
+  const truePlantAvg = validCycles.length > 0 ? validCycles.reduce((s, c) => s + c, 0) / validCycles.length : NaN;
   
   if (outTbl.length > 0 && !isNaN(truePlantAvg)) {
     outTbl[0].AverageCycleOfSPPC = truePlantAvg;

@@ -511,28 +511,117 @@ export function generatePortableViewHtml(
       const originalText = btn.innerHTML;
       btn.innerHTML = 'COPYING...';
       btn.disabled = true;
-      try {
-        const container = document.getElementById('chart-area-container');
-        const canvas = await html2canvas(container, {
-          backgroundColor: document.documentElement.classList.contains('dark') ? '#0B0F19' : '#F8FAFC',
-          scale: 2
+
+      const chartContainer = document.getElementById('chart-area-container');
+      if (!chartContainer) {
+        btn.innerHTML = originalText; btn.disabled = false;
+        return;
+      }
+
+      const plotDivs = chartContainer.querySelectorAll('.js-plotly-plot');
+      if (plotDivs.length === 0) {
+        alert("No graphs found to copy.");
+        btn.innerHTML = originalText; btn.disabled = false;
+        return;
+      }
+
+      const loadImage = (src) =>
+        new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => resolve(image);
+          image.onerror = reject;
+          image.src = src;
         });
-        canvas.toBlob(async (blob) => {
-          try {
-            await navigator.clipboard.write([
-              new ClipboardItem({ 'image/png': blob })
-            ]);
-            btn.innerHTML = 'COPIED!';
-            setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
-          } catch (err) {
-            console.error('Clipboard write error:', err);
-            btn.innerHTML = 'ERROR';
-            setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+
+      try {
+        const targetWidth = 1920;
+        const targetHeight = 1080;
+        const plotCount = plotDivs.length;
+
+        const titleEl = document.getElementById('plot-main-title');
+        const titleText = titleEl && titleEl.textContent ? titleEl.textContent.trim() : '';
+        const titleHeight = titleText ? 44 : 0;
+        const plotAreaHeight = targetHeight - titleHeight;
+
+        const baseSubplotHeight = Math.floor(plotAreaHeight / plotCount);
+        const remainder = plotAreaHeight - baseSubplotHeight * plotCount;
+        const subplotHeights = Array.from({ length: plotCount }, (_, i) =>
+          baseSubplotHeight + (i < remainder ? 1 : 0)
+        );
+
+        const imageUrls = await Promise.all(
+          Array.from(plotDivs).map((div, i) =>
+            Plotly.toImage(div, {
+              format: 'png',
+              width: targetWidth,
+              height: subplotHeights[i],
+              scale: 1,
+            })
+          )
+        );
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        const bgColor = graphConfig.bgWhite ? '#FFFFFF' : '#1a1a2e';
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (titleText) {
+          ctx.fillStyle = graphConfig.bgWhite ? '#000000' : '#E0E0E0';
+          ctx.font = 'bold 24px Helvetica, Arial, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(titleText, targetWidth / 2, titleHeight / 2);
+        }
+
+        let yOffset = titleHeight;
+        for (let i = 0; i < imageUrls.length; i++) {
+          const img = await loadImage(imageUrls[i]);
+          ctx.drawImage(img, 0, yOffset, targetWidth, subplotHeights[i]);
+          yOffset += subplotHeights[i];
+        }
+
+        const blob = await new Promise((resolve) => {
+          canvas.toBlob(resolve, 'image/png');
+        });
+        if (!blob) {
+          throw new Error("Canvas toBlob failed");
+        }
+
+        try {
+          if (!navigator.clipboard || !navigator.clipboard.write) {
+            throw new Error("Clipboard API not available");
           }
-        }, 'image/png');
+          await navigator.clipboard.write([
+            new window.ClipboardItem({ 'image/png': blob })
+          ]);
+          btn.innerHTML = 'COPIED!';
+          alert("Graph captured at 1920×1080 and copied to clipboard!");
+          setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+        } catch (clipErr) {
+          console.warn("Clipboard write failed, falling back to download:", clipErr);
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'graphs_capture_export.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          btn.innerHTML = 'DOWNLOADED!';
+          alert("Clipboard access is restricted for offline files. The graph image has been downloaded instead.");
+          setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
+        }
       } catch (err) {
-        console.error('html2canvas error:', err);
+        console.error("Image capture error:", err);
         btn.innerHTML = 'ERROR';
+        alert("Failed to capture graphs. Please check the console for details.");
         setTimeout(() => { btn.innerHTML = originalText; btn.disabled = false; }, 2000);
       }
     }
@@ -1006,8 +1095,8 @@ export function generatePortableViewHtml(
           ], getMATLABLayout('Reactive Power & Voltage', 'V (kV)', 'Q (MVar)', undefined, undefined, 'fig4_vq_' + pk), 'fig4_vq_' + pk);
         });
       } else if (activeMetric === 'fig5') {
-        const avgDaily = (evalDataRaw.dailyCycle.plant1 + evalDataRaw.dailyCycle.plant2 + (hasPlant3 ? evalDataRaw.dailyCycle.plant3 : 0)) / (hasPlant3 ? 3 : 2);
-        const avgTotal = (evalDataRaw.totalCycle.plant1 + evalDataRaw.totalCycle.plant2 + (hasPlant3 ? evalDataRaw.totalCycle.plant3 : 0)) / (hasPlant3 ? 3 : 2);
+        const avgDaily = evalDataRaw.avgDailyCycle;
+        const avgTotal = evalDataRaw.avgTotalCycle;
 
         plants.forEach((pk, statsIndex) => {
           const div = document.createElement('div');
@@ -1043,7 +1132,7 @@ export function generatePortableViewHtml(
             applyTrace({ y: evalDataRaw.pTotal[pk], type: 'scatter', mode: 'lines', name: 'P total', line: { color: '#0072BD', width: 1.2 } }, 0),
             applyTrace({ y: evalDataRaw.cmdP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.cmdP[pk].some((v) => v != null && !isNaN(v)) ? 'P command from NCC' : 'P command from NCC (No Data)', line: { color: '#D95319', width: 1.6, shape: 'hv' } }, 1),
             applyTrace({ y: evalDataRaw.remoteP[pk], type: 'scatter', mode: 'lines', name: evalDataRaw.remoteP[pk].some((v) => v != null && !isNaN(v)) ? 'Remote Active Power' : 'Remote Active Power (No Data)', line: { color: '#731A66', width: 1.6 } }, 2),
-            applyTrace({ y: evalDataRaw.dispatchP[pk], type: 'scatter', mode: 'lines', name: 'P dispatch allocation', line: { color: '#339933', width: 1.8, dash: 'dash' } }, 3),
+            applyTrace({ y: evalDataRaw.dispatchP[pk], type: 'scatter', mode: 'lines', name: 'P dispatch allocation', showlegend: Boolean(evalDataRaw?.dispatchP?.[pk]?.some((v) => v != null && !isNaN(v))), line: { color: '#339933', width: 1.8, dash: 'dash' } }, 3),
             applyTrace({ y: evalDataRaw.soc[pk], type: 'scatter', mode: 'lines', name: 'SOC', yaxis: 'y2', line: { color: '#D95319', width: 1.2 } }, 4)
           ];
 
